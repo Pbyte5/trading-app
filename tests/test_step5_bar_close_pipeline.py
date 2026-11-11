@@ -44,6 +44,11 @@ def test_on_bar_closed_pipeline_execution():
             assert float(row[3]) > 0.0, "VWAP must be positive"
             assert float(row[4]) > 0.0, "POC must be positive"
     finally:
+        try:
+            with conn.cursor() as cur:
+                cur.execute(f"DELETE FROM QUANT_INSTITUTIONAL_DB.SILVER_CLEAN.MARKET_CANDLES WHERE TICKER = 'BTCUSDT' AND TIMESTAMP_UTC = '{now_utc}'")
+        except Exception:
+            pass
         conn.close()
 
 

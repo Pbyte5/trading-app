@@ -4,7 +4,7 @@ import json
 import time
 from pathlib import Path
 import pandas as pd
-from app import get_live_ws_candle, get_candles_with_live_overlay
+from app import get_live_ws_candle, get_candles_with_live_overlay, load_candles_from_snowflake
 from src.config.snowflake_session import get_raw_connection
 
 
@@ -22,29 +22,37 @@ def test_live_ws_overlay_in_candlestick_dataframe():
     live_dir.mkdir(parents=True, exist_ok=True)
     live_file = live_dir / "live_btcusdt.json"
 
+    df_hist = load_candles_from_snowflake("CRYPTO", "BTCUSDT", "5m", limit=1)
+    base_close = float(df_hist["CLOSE"].iloc[-1]) if not df_hist.empty else 74000.0
+    test_close = round(base_close * 1.005, 2)
+    test_open = round(base_close * 1.001, 2)
+
     test_state = {
         "symbol": "BTCUSDT",
         "timeframe": "5m",
         "timestamp_utc": "2026-11-11 23:55:00",
-        "open": 89000.0,
-        "high": 89500.0,
-        "low": 88900.0,
-        "close": 89450.0,
+        "open": test_open,
+        "high": test_close + 50.0,
+        "low": test_open - 50.0,
+        "close": test_close,
         "volume": 25.0,
         "is_closed": False,
         "cvd": 5.25,
         "trades_count": 140,
         "last_updated_epoch": time.time()
     }
-    with open(live_file, "w", encoding="utf-8") as f:
-        json.dump(test_state, f)
+    try:
+        with open(live_file, "w", encoding="utf-8") as f:
+            json.dump(test_state, f)
 
-    df = get_candles_with_live_overlay("CRYPTO", "BTCUSDT", "5m", limit=50)
-    assert not df.empty, "DataFrame should contain historical + live data"
-    last_row = df.iloc[-1]
-    assert float(last_row["CLOSE"]) == 89450.0, f"Expected live close 89450.0, got {last_row['CLOSE']}"
-    assert float(last_row["OPEN"]) == 89000.0
-    print(f"Verified live overlay: Latest candle close={last_row['CLOSE']} Open={last_row['OPEN']}")
+        df = get_candles_with_live_overlay("CRYPTO", "BTCUSDT", "5m", limit=50)
+        assert not df.empty, "DataFrame should contain historical + live data"
+        last_row = df.iloc[-1]
+        assert float(last_row["CLOSE"]) == test_close, f"Expected live close {test_close}, got {last_row['CLOSE']}"
+        assert float(last_row["OPEN"]) == test_open
+        print(f"Verified live overlay: Latest candle close={last_row['CLOSE']} Open={last_row['OPEN']}")
+    finally:
+        live_file.unlink(missing_ok=True)
 
 
 def test_warehouse_post_measurement():

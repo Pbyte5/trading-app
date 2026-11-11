@@ -107,6 +107,12 @@ def build_connection_params(use_initial_warehouse: bool = False) -> Dict[str, An
             "Faltan credenciales de Snowflake. Configura SNOWFLAKE_ACCOUNT y SNOWFLAKE_USER en tu archivo .env"
         )
 
+    if settings.snowflake_account in ("xy12345.us-east-1", "MI_ORGANIZACION-MI_CUENTA", "tu_cuenta", "xy12345"):
+        raise ValueError(
+            f"El valor actual de SNOWFLAKE_ACCOUNT ('{settings.snowflake_account}') es una plantilla de ejemplo. "
+            "Debes configurar tu identificador de cuenta real de Snowflake en el archivo .env (ej. 'orgname-accountname')."
+        )
+
     params: Dict[str, Any] = {
         "account": settings.snowflake_account,
         "user": settings.snowflake_user,

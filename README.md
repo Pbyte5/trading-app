@@ -1,9 +1,12 @@
+
 # | Institutional Multi-Market Terminal & Multi-Agent Committee
+
 > **Plataforma Cuantitativa y Agéntica de Grado Institucional (Hedge Funds)** integrada nativamente con **Snowflake AI Data Cloud**, arquitectura Medallion (**Bronze, Silver, Gold**), cálculo de microestructura de mercado en tiempo real (**Velas de 5m/1h, VWAP Bands, Volume Profile POC/VAH/VAL, Hurst, CVD**) y orquestación multi-agente con filtro determinista del **Chief Risk Officer (CRO)**.
 
 ---
 
 ## 📑 Tabla de Contenidos
+
 1. [🏛️ Arquitectura General del Sistema](#️-arquitectura-general-del-sistema)
 2. [❄️ Snowflake AI Data Cloud: Rol y Arquitectura Medallion](#️-snowflake-ai-data-cloud-rol-y-arquitectura-medallion)
 3. [🧠 El Motor RAG (Retrieval-Augmented Generation) y Memoria Episódica](#-el-motor-rag-retrieval-augmented-generation-y-memoria-episódica)
@@ -103,6 +106,7 @@ flowchart TD
 Snowflake actúa como el **almacén central unificado de datos, cómputo y vectores**, eliminando la necesidad de bases de datos de series de tiempo separadas o motores vectoriales independientes.
 
 ### 1. Ventajas de la Arquitectura en Snowflake
+
 * **Separación de Almacenamiento y Cómputo:**
   - `INGEST_WH` (Virtual Warehouse talla `XSMALL`, auto-suspend 60s): Dedicado exclusivamente a la ingesta no bloqueante de datos crudos y transacciones de carga.
   - `QUANT_RAG_WH` (Virtual Warehouse talla `SMALL`, auto-suspend 120s): Dedicado al cálculo intensivo de microestructura en Snowpark y a las consultas vectoriales de similitud coseno.
@@ -113,17 +117,18 @@ Snowflake actúa como el **almacén central unificado de datos, cómputo y vecto
 
 ### 2. Capas Medallion Implementadas
 
-| Capa | Esquema | Tablas Principales | Rol Técnico en el Proyecto |
-| :--- | :--- | :--- | :--- |
-| **Bronze** | `BRONZE_RAW` | `RAW_MARKET_FEED`<br>`RAW_ORDERBOOK_FEED`<br>`RAW_MACRO_FEED`<br>`RAW_NEWS_FEED` | Ingesta cruda append-only en columnas nativas `VARIANT` (JSON auditables). Preserva la trazabilidad completa desde la fuente sin esquemas rígidos. |
-| **Silver** | `SILVER_CLEAN` | `MARKET_CANDLES` | Series temporales limpias, validadas y normalizadas (Open, High, Low, Close, Volume). Posee clave primaria compuesta `(MARKET, TICKER, TIMEFRAME, TIMESTAMP_UTC)` y directiva `CLUSTER BY` para acelerar lecturas por intervalo de tiempo. |
-| **Gold** | `GOLD_QUANT_RAG` | `QUANT_MARKET_STATES`<br>`INSTITUTIONAL_PLAYBOOKS`<br>`EPISODIC_MEMORY_STATES` | **Feature Store Cuantitativo y Base de Vectores.** Contiene métricas de microestructura calculadas por vela, así como vectores de 1024 dimensiones generados nativamente para el RAG. |
+| Capa             | Esquema            | Tablas Principales                                                       | Rol Técnico en el Proyecto                                                                                                                                                                                                                    |
+| :--------------- | :----------------- | :----------------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Bronze** | `BRONZE_RAW`     | `RAW_MARKET_FEEDRAW_ORDERBOOK_FEED``RAW_MACRO_FEEDRAW_NEWS_FEED`     | Ingesta cruda append-only en columnas nativas `VARIANT` (JSON auditables). Preserva la trazabilidad completa desde la fuente sin esquemas rígidos.                                                                                          |
+| **Silver** | `SILVER_CLEAN`   | `MARKET_CANDLES`                                                       | Series temporales limpias, validadas y normalizadas (Open, High, Low, Close, Volume). Posee clave primaria compuesta `(MARKET, TICKER, TIMEFRAME, TIMESTAMP_UTC)` y directiva `CLUSTER BY` para acelerar lecturas por intervalo de tiempo. |
+| **Gold**   | `GOLD_QUANT_RAG` | `QUANT_MARKET_STATESINSTITUTIONAL_PLAYBOOKS``EPISODIC_MEMORY_STATES` | **Feature Store Cuantitativo y Base de Vectores.** Contiene métricas de microestructura calculadas por vela, así como vectores de 1024 dimensiones generados nativamente para el RAG.                                                  |
 
 ---
 
 ## 🧠 El Motor RAG (Retrieval-Augmented Generation) y Memoria Episódica
 
 El módulo RAG garantiza que los agentes **no deliren (alucinen)** y formulen planes basados estrictamente en:
+
 1. **Reglas institucionales codificadas** (Playbooks).
 2. **Precedentes históricos reales** bajo condiciones matemáticas idénticas (Memoria Episódica).
 
@@ -152,19 +157,24 @@ sequenceDiagram
 ### Componentes del Sistema RAG
 
 #### A. Playbooks Institucionales Semánticos (`INSTITUTIONAL_PLAYBOOKS`)
+
 Documentos de alta fidelidad redactados por analistas cuantitativos en `/playbooks`:
+
 * `01_microestructura_liquidez.md`: Reglas de barridos de liquidez (*liquidity sweeps*), rechazos en bandas de VWAP $\pm 2\sigma / \pm 3\sigma$ y divergencias de CVD.
 * `02_macro_carry_trade_forex.md`: Estrategias de Carry Trade, diferenciales de tipos de interés, límites de VIX (< 20) y decodificación de informes semanales COT (CFTC).
 * `03_onchain_ciclos_cripto.md`: Ciclos On-Chain de Bitcoin, métricas MVRV Z-Score, reservas en exchanges y dinámicas de liquidaciones en derivados.
 
 **Proceso de Ingesta Vectorial:**
 El script `src/rag/ingest_playbooks_snow.py` particiona los playbooks en *chunks* contextuales y genera representaciones vectoriales densas utilizando el modelo multilingüe de Snowflake Cortex:
+
 ```sql
 SNOWFLAKE.CORTEX.EMBED_TEXT_1024('voyage-multilingual-2', chunk_text)
 ```
 
 #### B. Memoria Episódica de Mercado (`EPISODIC_MEMORY_STATES`)
+
 A diferencia de los LLMs tradicionales que carecen de noción de mercado pasado, QUANT CORTEX archiva cada configuración cuantitativa relevante como un "episodio":
+
 * **Vectorización:** Convierte el resumen textual del estado (`"BTCUSDT en MEAN_REVERSION con Hurst=0.41 y precio en banda inferior VWAP"`) en un vector de 1024 dimensiones.
 * **Recuperación por Similitud:** Cuando el agente analiza el mercado hoy, ejecuta:
   ```sql
@@ -174,6 +184,7 @@ A diferencia de los LLMs tradicionales que carecen de noción de mercado pasado,
   ORDER BY SIMILARITY_SCORE DESC
   LIMIT 3;
   ```
+
   Esto permite al comité conocer si situaciones similares en el pasado culminaron en rupturas falsas o en rebotes efectivos.
 
 ---
@@ -185,27 +196,45 @@ A diferencia de los LLMs tradicionales que carecen de noción de mercado pasado,
 El motor cuantitativo implementado en `src/quant_engine/` procesa las velas de la capa Silver y produce los siguientes indicadores:
 
 #### Exponente de Hurst ($H$) y Clasificación de Régimen
+
 Calculado mediante el análisis de Rango Reescalado ($R/S$):
-$$E\left[\frac{R(n)}{S(n)}\right] = C \cdot n^H \quad \implies \quad \log\left(\frac{R}{S}\right) = \log(C) + H \cdot \log(n)$$
+
+$$
+E\left[\frac{R(n)}{S(n)}\right] = C \cdot n^H \quad \implies \quad \log\left(\frac{R}{S}\right) = \log(C) + H \cdot \log(n)
+$$
+
 * **$H < 0.45$ $\rightarrow$ Antipersistencia (`MEAN_REVERSION`):** El precio oscila y tiende a regresar al valor medio (estrategia de reversión a la media).
 * **$0.45 \le H \le 0.55$ $\rightarrow$ Movimiento Browniano (`RANDOM_WALK`):** Ruido aleatorio sin memoria estadística. Se prohíben operaciones directas intradía.
 * **$H > 0.55$ $\rightarrow$ Persistencia (`TRENDING_MOMENTUM`):** Rupturas continuadas en la misma dirección (estrategias de tendencia).
 
 #### VWAP Anclado a Sesión y Bandas de Desviación Estándar
-$$\text{VWAP} = \frac{\sum_{i} P_{\text{typical}, i} \cdot V_i}{\sum_i V_i}, \quad P_{\text{typical}} = \frac{High + Low + Close}{3}$$
-$$\sigma = \sqrt{\frac{\sum_i V_i \cdot (P_{\text{typical}, i} - \text{VWAP})^2}{\sum_i V_i}}$$
+
+$$
+\text{VWAP} = \frac{\sum_{i} P_{\text{typical}, i} \cdot V_i}{\sum_i V_i}, \quad P_{\text{typical}} = \frac{High + Low + Close}{3}
+$$
+
+$$
+\sigma = \sqrt{\frac{\sum_i V_i \cdot (P_{\text{typical}, i} - \text{VWAP})^2}{\sum_i V_i}}
+$$
+
 * Bandas de intervención: $\text{VWAP} \pm 1\sigma$, $\text{VWAP} \pm 2\sigma$, $\text{VWAP} \pm 3\sigma$.
 
 #### Perfil de Volumen (Volume Profile) y Value Area
+
 Agrupa el volumen negociado en intervalos de precio discretos (*price bins*):
+
 * **Point of Control (POC):** El nivel de precio exacto donde se acumuló el mayor volumen durante la ventana.
 * **Value Area (VA):** Rango de precios que concentra el **70% del volumen total**.
   - **Value Area High (VAH):** Límite superior del 70%.
   - **Value Area Low (VAL):** Límite inferior del 70%.
 
 #### Delta Acumulado de Volumen (CVD - Cumulative Volume Delta)
+
 Mide la presión neta compradora frente a vendedora en las velas analizadas:
-$$\text{CVD}_t = \text{CVD}_{t-1} + (V_{\text{buyer}} - V_{\text{seller}})$$
+
+$$
+\text{CVD}_t = \text{CVD}_{t-1} + (V_{\text{buyer}} - V_{\text{seller}})
+$$
 
 ---
 
@@ -214,18 +243,22 @@ $$\text{CVD}_t = \text{CVD}_{t-1} + (V_{\text{buyer}} - V_{\text{seller}})$$
 El sistema opera con tres agentes especializados y un filtro ineludible de ciberseguridad y riesgo financiero:
 
 ### 1. Filtro de Ciberseguridad y Guardrails (`src/agents/security.py`)
+
 * **Detección Anti-Prompt Injection:** Bloquea de forma heurística intentos de jailbreak (patrones DAN, `"ignore previous instructions"`, intentos de extracción de claves API o cadenas de conexión de Snowflake).
 * **Filtro de Dominio Estricto:** Si la consulta del usuario se desvía del análisis financiero, microestructura o modelo de negocio, redirige respetuosamente la conversación.
 
 ### 2. Agente 1: Analista Cuantitativo de Microestructura
+
 * Extrae el estado actual del Feature Store de Snowflake (`QUANT_MARKET_STATES`).
 * Diagnostica el régimen de mercado vía Hurst y la posición del precio con respecto a VWAP, VAH y VAL.
 
 ### 3. Agente 2: Estratega Multi-Horizonte
+
 * **Estrategia Intradía:** Plantea órdenes de entrada táctica en velas de 5m ancladas a rebotes en bandas de VWAP $\pm 2\sigma$ o barridos de liquidez cerca del POC.
 * **Estrategia Swing / Holder:** Plantea asignaciones patrimoniales macro con base en tasas de interés, reportes COT y métricas On-Chain (MVRV).
 
 ### 4. Agente 3: Chief Risk Officer (CRO) — Filtro Determinista en Python
+
 El CRO **no es un prompt ni un LLM vulnerable a manipulación**, sino una función de código Python (`evaluate_risk_officer_filter` en `src/agents/orchestrator.py`) que aplica reglas institucionales no negociables:
 
 ```python
@@ -246,16 +279,25 @@ if regime == "RANDOM_WALK" and strategy.horizon == "INTRADAY":
 ```
 
 #### Asignación de Capital con Criterio de Kelly Fraccionado ($1/4$ Kelly)
+
 El tamaño de posición óptimo se calcula mediante:
-$$f^* = \frac{p \cdot b - q}{b}$$
+
+$$
+f^* = \frac{p \cdot b - q}{b}
+$$
+
 Donde $p$ es la tasa de acierto estimada, $q = 1 - p$, y $b$ es la relación beneficio/riesgo. Para proteger la cartera contra rachas desfavorables, se utiliza una fracción conservadora:
-$$\text{Tamaño Posición} = \frac{1}{4} f^* \times \text{Capital Total} \quad (\text{máx. 1% a 2% de riesgo})$$
+
+$$
+\text{Tamaño Posición} = \frac{1}{4} f^* \times \text{Capital Total} \quad (\text{máx. 1% a 2% de riesgo})
+$$
 
 ---
 
 ## 🖥️ Frontend y Terminal Interactivo
 
 El frontend en `app.py` integra tecnologías de vanguardia para brindar una experiencia fluida:
+
 * **TradingView Lightweight Charts™ (Canvas HTML5 a 60 FPS):**
   - Renderizado directo acelerado por hardware sin lentitud ni re-cargas innecesarias.
   - Soporte completo para navegación táctil/ratón: rueda para zoom temporal, arrastre elástico vertical del eje de precios (*price scale drag*), y auto-escala del eje Y en tiempo real.
@@ -271,11 +313,13 @@ El frontend en `app.py` integra tecnologías de vanguardia para brindar una expe
 ## 🚀 Guía de Instalación y Puesta en Marcha
 
 ### Prerrequisitos
+
 * Python 3.10 o superior (ej. Python 3.12 / 3.14).
 * Cuenta en **Snowflake AI Data Cloud** con permisos para crear base de datos y esquemas.
 * Clave de API de Google Gemini (`GEMINI_API_KEY`).
 
 ### 1. Clonar el Repositorio y Crear el Entorno Virtual
+
 ```bash
 git clone https://github.com/tu-usuario/proyecto_agente_financiero.git
 cd proyecto_agente_financiero
@@ -286,17 +330,22 @@ source .venv/bin/activate
 ```
 
 ### 2. Instalar Dependencias
+
 ```bash
 pip install --upgrade pip
 pip install -r requirements.txt streamlit plotly
 ```
 
 ### 3. Configurar Variables de Entorno (`.env`)
+
 Copia la plantilla y configura tus credenciales:
+
 ```bash
 cp .env.example .env
 ```
+
 Edita `.env` con tus parámetros reales:
+
 ```ini
 # Snowflake AI Data Cloud
 SNOWFLAKE_ACCOUNT="MI_ORGANIZACION-MI_CUENTA"
@@ -313,30 +362,41 @@ GEMINI_API_KEY="AIzaSy..."
 ```
 
 ### 4. Inicializar Base de Datos y Vectores en Snowflake
+
 Ejecuta los scripts SQL contenidos en `/snowflake_sql` en tu consola Snowflake (Snowsight) o mediante SnowSQL en este orden:
+
 1. `snowflake_sql/01_setup_warehouses_db.sql`: Crea la base de datos `QUANT_INSTITUTIONAL_DB`, los esquemas (`BRONZE_RAW`, `SILVER_CLEAN`, `GOLD_QUANT_RAG`) y los *Warehouses*.
 2. `snowflake_sql/02_tables_and_vectors.sql`: Crea las tablas Bronze, Silver y las tablas vectoriales con tipo `VECTOR(FLOAT, 1024)`.
 3. `snowflake_sql/03_cortex_search_service.sql`: Habilita el servicio de búsqueda híbrida Cortex.
 
 ### 5. Ingestar los Playbooks Institucionales en Snowflake
+
 Para vectorizar los playbooks y cargarlos en `GOLD_QUANT_RAG.INSTITUTIONAL_PLAYBOOKS`:
+
 ```bash
 python -m src.rag.ingest_playbooks_snow
 ```
 
 ### 6. Iniciar el Terminal Web
+
 Ejecuta el script de inicio optimizado:
+
 ```bash
 ./start_terminal.sh
 ```
+
 O directamente con Streamlit:
+
 ```bash
 streamlit run app.py --server.port 8501
 ```
+
 Abre tu navegador en: **`http://localhost:8501`**
 
 ### 7. Ejecutar el Daemon en Segundo Plano (Opcional)
+
 Para sincronizar automáticamente cada 60 segundos una ventana deslizante de 7 días con velas de 5 minutos y 1 hora:
+
 ```bash
 python -m src.pipeline.live_daemon --interval 60 --days 7 --timeframe 5m
 ```
@@ -392,4 +452,5 @@ python -m src.pipeline.live_daemon --interval 60 --days 7 --timeframe 5m
 ---
 
 ## 📜 Licencia y Uso Institucional
+
 Este software ha sido diseñado con propósitos de investigación cuantitativa, análisis de microestructura y deliberación financiera asistida por inteligencia artificial. Toda orden de mercado emitida por el sistema se encuentra subordinada a la validación matemática previa del **Chief Risk Officer (CRO)**.
