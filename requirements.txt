@@ -1,0 +1,24 @@
+# Snowflake Data Cloud & Snowpark
+snowflake-snowpark-python>=1.20.0
+snowflake-connector-python[pandas]>=3.12.0
+cryptography>=42.0.0
+
+# Settings & Data Validation
+pydantic>=2.7.0
+pydantic-settings>=2.2.0
+python-dotenv>=1.0.0
+
+# Quantitative & Financial Math
+numpy>=1.26.0
+pandas>=2.2.0
+scipy>=1.13.0
+
+# Network & APIs
+requests>=2.31.0
+httpx>=0.27.0
+
+# MCP (Model Context Protocol) & AI Orchestration
+mcp>=1.0.0
+google-genai>=0.1.0
+google-generativeai>=0.8.0
+

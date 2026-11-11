@@ -1,0 +1,17 @@
+{
+  "is_running": true,
+  "status": "LIVE_RUNNING",
+  "last_sync_utc": "2026-11-11 02:10:49",
+  "cycles_completed": 9,
+  "days_lookback": 7,
+  "timeframes": [
+    "5m",
+    "1h"
+  ],
+  "assets_tracked": [
+    "BTCUSDT (CRYPTO)",
+    "NVDA (EQUITIES)",
+    "EURUSD (FOREX)"
+  ],
+  "last_error": null
+}
