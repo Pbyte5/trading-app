@@ -52,11 +52,12 @@ st.markdown("""
 
     /* Full-screen terminal canvas maximized for near-full screen trading view */
     .block-container {
-        padding-top: 0.85rem !important;
-        padding-bottom: 0.35rem !important;
+        padding-top: 0.40rem !important;
+        padding-bottom: 0.25rem !important;
         padding-left: 1rem !important;
         padding-right: 1rem !important;
         max-width: 100% !important;
+        position: relative !important;
     }
 
     /* Streamlit Header & Toolbar Decoupling: Non-blocking pointer events, zero physical collision */
@@ -77,13 +78,19 @@ st.markdown("""
         pointer-events: auto !important;
     }
 
-    /* Hide ONLY right-side Streamlit toolbar items (menu, running status) to avoid overlap with ⚙️ */
+    /* Hide Deploy button and right-side Streamlit toolbar items */
+    .stAppDeployButton,
+    [data-testid="stAppDeployButton"],
     [data-testid="stToolbarActions"],
     [data-testid="stMainMenu"],
     [data-testid="stStatusWidget"],
     [data-testid="stToolbarActionButton"] {
         display: none !important;
         visibility: hidden !important;
+        width: 0 !important;
+        height: 0 !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
     }
 
     /* High-Visibility Floating Sidebar Toggle Buttons (Expand & Collapse) */
@@ -388,33 +395,81 @@ st.markdown("""
         background: rgba(56, 189, 248, 0.2) !important;
     }
 
-    /* 6. Compact Tab Navigation Bar (Minimal Vertical Overhead) */
+    /* 6. Unified Single-Bar Navigation & Integrated Settings Icon */
+    div[data-testid="stPopover"] {
+        position: absolute !important;
+        top: 0.44rem !important;
+        right: calc(1rem + 8px) !important;
+        z-index: 100 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+    div[data-testid="stPopover"] button[data-testid="stPopoverButton"],
+    div[data-testid="stPopover"] > div > div > button {
+        height: 28px !important;
+        min-height: 28px !important;
+        width: 32px !important;
+        min-width: 32px !important;
+        padding: 0 !important;
+        background: transparent !important;
+        border: 1px solid transparent !important;
+        border-radius: 6px !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        color: #94a3b8 !important;
+        box-shadow: none !important;
+        transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    }
+    div[data-testid="stPopover"] button[data-testid="stPopoverButton"]:hover,
+    div[data-testid="stPopover"] > div > div > button:hover {
+        border-color: rgba(56, 189, 248, 0.4) !important;
+        background: #1e293b !important;
+        color: #38bdf8 !important;
+        box-shadow: 0 0 10px rgba(56, 189, 248, 0.25) !important;
+    }
+    /* Hide the drop arrow inside popover button so it acts as an integrated icon */
+    button[data-testid="stPopoverButton"] [data-testid="stIconMaterial"] {
+        display: none !important;
+    }
+
+    div[data-testid="stTabs"] div[role="tablist"],
     .stTabs [data-baseweb="tab-list"] {
+        display: flex !important;
+        width: 100% !important;
         gap: 6px !important;
         background-color: #0f172a !important;
-        padding: 4px !important;
+        padding: 3px 6px !important;
         border-radius: 8px !important;
         border: 1px solid #1e293b !important;
         box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04) !important;
-        margin-top: 2px !important;
-        margin-bottom: 8px !important;
+        margin-top: 0px !important;
+        margin-bottom: 4px !important;
+        box-sizing: border-box !important;
+        align-items: center !important;
+        padding-right: 44px !important; /* Space for the seamlessly integrated ⚙️ inside this same bar */
     }
+    div[data-testid="stTabs"] div[role="tab"],
+    div[data-testid="stTab"],
     .stTabs [data-baseweb="tab"] {
-        height: 36px !important;
+        height: 28px !important;
         color: #94a3b8 !important;
         font-weight: 600 !important;
-        font-size: 0.84rem !important;
-        padding: 6px 18px !important;
+        font-size: 0.80rem !important;
+        padding: 3px 14px !important;
         border-radius: 5px !important;
         background: transparent !important;
         border: 1px solid transparent !important;
         transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
     }
+    div[data-testid="stTabs"] div[role="tab"]:hover,
+    div[data-testid="stTab"]:hover,
     .stTabs [data-baseweb="tab"]:hover {
         color: #f8fafc !important;
         background-color: rgba(255, 255, 255, 0.04) !important;
-        border-color: rgba(255, 255, 255, 0.06) !important;
     }
+    div[data-testid="stTabs"] div[role="tab"][aria-selected="true"],
+    div[data-testid="stTab"][aria-selected="true"],
     .stTabs [aria-selected="true"] {
         color: #38bdf8 !important;
         background-color: #1e293b !important;
@@ -516,47 +571,77 @@ st.markdown("""
         transform: scale(0.97) translateY(1px) !important;
     }
 
-    /* 9. Form Inputs (Selectores de Activo, Temporalidad, Ventana) */
-    div[data-baseweb="select"] > div,
-    div[data-baseweb="input"] > div,
-    div[data-baseweb="base-input"],
-    div[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
-    div[data-testid="stNumberInput"] div[data-baseweb="input"] > div {
-        background-color: #0d1324 !important;  /* <- Color de FONDO */
-        border: 1px solid #1e293b !important;  /* <- Color de BORDE */
+    /* 9. Form Inputs (Selectores de Activo, Temporalidad, Ventana - Streamlit 1.67+ React Aria) */
+    
+    /* Contenedores de las casillas: Activo, Temporalidad y Ventana */
+    div[data-testid="stSelectbox"] div[role="group"],
+    div[data-testid="stSelectbox"] div[data-rac][role="group"],
+    div[data-testid="stNumberInputContainer"] {
+        background-color: #0d1324 !important;  /* <- 1. COLOR DE FONDO DE LAS CASILLAS */
+        border: 1px solid #1e293b !important;  /* <- 2. COLOR DEL BORDE */
         border-radius: 8px !important;
-        color: #0d1324 !important;              /* <- Color de TEXTO */
         transition: border-color 0.2s ease, background-color 0.2s ease !important;
     }
 
-    /* Texto interno y campo de entrada editable */
-    div[data-baseweb="select"] span,
-    div[data-baseweb="select"] div,
-    div[data-baseweb="input"] input {
-        color: #0d1324 !important;              /* <- Color del TEXTO interno */
+    /* Hover en los contenedores */
+    div[data-testid="stSelectbox"] div[role="group"]:hover,
+    div[data-testid="stSelectbox"] div[data-rac][role="group"]:hover,
+    div[data-testid="stNumberInputContainer"]:hover {
+        border-color: #38bdf8 !important;     /* <- COLOR DEL BORDE AL PASAR EL CURSOR */
+    }
+
+    /* Texto interno y campos editables de los inputs */
+    div[data-testid="stSelectbox"] input,
+    input[data-testid="stNumberInputField"],
+    div[data-testid="stNumberInput"] input {
+        color: #f8fafc !important;             /* <- 3. COLOR DEL TEXTO */
         background-color: transparent !important;
     }
 
-    /* Botones de incremento (+ / -) de Ventana (Días) */
-    div[data-testid="stNumberInput"] button {
-        color: #94a3b8 !important;
+    /* Botones de incremento (+ y -) de Ventana (Días) */
+    button[data-testid="stNumberInputStepDown"],
+    button[data-testid="stNumberInputStepUp"] {
+        color: #94a3b8 !important;             /* <- 4. COLOR DE LOS SIGNOS + Y - */
         background-color: transparent !important;
         border: none !important;
     }
-    div[data-testid="stNumberInput"] button:hover {
+    button[data-testid="stNumberInputStepDown"]:hover,
+    button[data-testid="stNumberInputStepUp"]:hover {
+        color: #38bdf8 !important;             /* <- Color al pasar el cursor sobre + o - */
+    }
+
+    /* Flecha desplegable (chevron) de los Selectbox */
+    div[data-testid="stSelectbox"] button svg,
+    div[data-testid="stSelectbox"] svg {
+        color: #94a3b8 !important;             /* <- 5. COLOR DE LA FLECHA DESPLEGABLE */
+        fill: currentColor !important;
+    }
+    div[data-testid="stSelectbox"] button:hover svg {
         color: #38bdf8 !important;
     }
 
-    /* Flecha desplegable del selector */
-    div[data-baseweb="select"] svg {
-        fill: #94a3b8 !important;
-        color: #94a3b8 !important;
+    /* Títulos / Etiquetas de los inputs ("Temporalidad", "Ventana (Días)") */
+    div[data-testid="stSelectbox"] label[data-testid="stWidgetLabel"] p,
+    div[data-testid="stNumberInput"] label[data-testid="stWidgetLabel"] p {
+        color: #94a3b8 !important;             /* <- 6. COLOR DE LOS TÍTULOS SUPERIORES */
+        font-size: 0.76rem !important;
+        font-weight: 600 !important;
     }
 
-    /* Borde en estado Hover */
-    div[data-baseweb="select"] > div:hover,
-    div[data-baseweb="input"] > div:hover {
-        border-color: #38bdf8 !important;
+    /* Menú desplegable cuando se abre la lista de opciones */
+    div[data-testid="stSelectboxVirtualDropdown"] {
+        background-color: #0b1120 !important;  /* <- 7. FONDO DE LA LISTA DESPLEGABLE */
+        border: 1px solid #1e293b !important;
+        border-radius: 8px !important;
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5) !important;
+    }
+    div[data-testid="stSelectboxVirtualDropdown"] [role="option"] {
+        color: #f8fafc !important;
+    }
+    div[data-testid="stSelectboxVirtualDropdown"] [role="option"]:hover,
+    div[data-testid="stSelectboxVirtualDropdown"] [role="option"][aria-selected="true"] {
+        background-color: rgba(56, 189, 248, 0.15) !important;
+        color: #38bdf8 !important;
     }
 
     /* Accessibility Focus Indicator */
@@ -1354,97 +1439,75 @@ def main():
             })
             st.rerun()
 
-    # 4. Main Canvas: Top Bar & Menú de Configuración Unificado
-    col_head_title, col_head_config = st.columns([0.92, 0.08], vertical_alignment="center")
-    with col_head_title:
-        live_badge_class = "cro-badge-approved" if is_live else "cro-badge-rejected"
-        pulse_dot_class = "status-dot-pulse-green" if is_live else "status-dot-pulse-red"
-        live_status_text = "LIVE FEED" if is_live else "SUSPENDIDO"
-        st.markdown(f"""
-        <div style="display: flex; align-items: center; gap: 12px; row-gap: 8px; flex-wrap: wrap; margin-bottom: 8px; min-height: 42px;">
-            <span style="font-size: 1.25rem; font-weight: 800; color: #38bdf8; letter-spacing: 0.04em;">TRADING TERMINAL</span>
-            <span class="badge-ticker">
-                {ticker} <span style="color:#64748b; margin: 0 4px;">•</span> {timeframe}
-            </span>
-            <span class="{live_badge_class}">
-                <span class="{pulse_dot_class}"></span>{live_status_text}
-            </span>
-            <span class="badge-info">
-                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: text-bottom;"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
-                SNOWFLAKE : QUANT_INSTITUTIONAL_DB
-            </span>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with col_head_config:
-        with st.popover("⚙️", help="Configuración del Terminal y Parámetros", use_container_width=True):
-            st.markdown("<h4 style='margin-top:0; color:#38bdf8;'>⚙️ Panel de Configuración</h4>", unsafe_allow_html=True)
-            
-            st.markdown("##### 1. Capas de Microestructura")
-            show_vwap = st.checkbox("Línea VWAP de Sesión", value=True, key="cfg_vwap")
-            show_poc = st.checkbox("Nivel POC (Point of Control)", value=True, key="cfg_poc")
-            show_bands = st.checkbox("Bandas VWAP (±2s)", value=False, key="cfg_bands")
-            show_val_vah = st.checkbox("Áreas de Valor (VAH / VAL)", value=False, key="cfg_val_vah")
-            show_volume = st.checkbox("Histograma de Volumen", value=True, key="cfg_volume")
-            
-            st.markdown("---")
-            st.markdown("##### 2. Pipeline en Vivo & Sincronización")
-            live_ws = get_live_ws_candle(ticker)
-            if live_ws:
-                st.markdown(
-                    f"<div style='background:rgba(16,185,129,0.15); border:1px solid #10b981; border-radius:6px; padding:8px; font-size:0.8rem;'>"
-                    f"🟢 <b>WebSocket Binance Conectado</b><br>"
-                    f"Precio vivo: <b>${live_ws.get('close', 0.0):,.2f}</b><br>"
-                    f"CVD tiempo real: <b>{live_ws.get('cvd', 0.0):+,.2f}</b><br>"
-                    f"Trades vela 5m: <b>{live_ws.get('trades_count', 0)}</b>"
-                    f"</div>",
-                    unsafe_allow_html=True
-                )
-            else:
-                st.markdown(
-                    "<div style='background:rgba(148,163,184,0.1); border:1px solid #334155; border-radius:6px; padding:8px; font-size:0.8rem; color:#94a3b8;'>"
-                    "⚪ <b>Worker Offline</b><br>"
-                    "Ejecuta en terminal:<br><code>python3 -m src.pipeline.ws_binance_worker</code>"
-                    "</div>",
-                    unsafe_allow_html=True
-                )
-            
-            col_s1, col_s2 = st.columns(2)
-            with col_s1:
-                if st.button("Sincronizar Activo", use_container_width=True, type="primary", key="pop_sync"):
-                    with st.spinner(f"Sincronizando {ticker} con Snowflake..."):
-                        try:
-                            sync_single_asset(market=market_choice, ticker=ticker, timeframe=timeframe, days=days_lookback)
-                            st.cache_data.clear()
-                            clear_gold_tools_cache()
-                            st.success("Sincronizado.")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Error al sincronizar con Snowflake: {e}")
-            with col_s2:
-                if st.button("Purgar Caché", use_container_width=True, key="pop_purge"):
-                    st.cache_data.clear()
-                    clear_gold_tools_cache()
-                    st.toast("Caché purgada.", icon="✅")
-                    st.rerun()
-
-            st.markdown("---")
-            st.markdown("##### 3. Gestión de Capital")
-            equity = st.number_input("Capital Institucional (USD)", min_value=1000.0, value=100000.0, step=10000.0, key="pop_equity")
-
-            st.markdown("---")
-            st.markdown("##### 4. Configuración Gemini API")
-            gemini_key_input = st.text_input(
-                "Gemini API Key:",
-                value=st.session_state.get("gemini_api_key", ""),
-                type="password",
-                placeholder="AIzaSy...",
-                key="pop_gemini_key",
-                help="Clave API de Google Gemini para habilitar el razonamiento institucional."
+    # 4. Main Canvas: Menú de Configuración Unificado (Ultra-Compacto Flotante Superior)
+    with st.popover("⚙️", help="Configuración del Terminal y Parámetros"):
+        st.markdown("<h4 style='margin-top:0; color:#38bdf8;'>⚙️ Panel de Configuración</h4>", unsafe_allow_html=True)
+        
+        st.markdown("##### 1. Capas de Microestructura")
+        show_vwap = st.checkbox("Línea VWAP de Sesión", value=True, key="cfg_vwap")
+        show_poc = st.checkbox("Nivel POC (Point of Control)", value=True, key="cfg_poc")
+        show_bands = st.checkbox("Bandas VWAP (±2s)", value=False, key="cfg_bands")
+        show_val_vah = st.checkbox("Áreas de Valor (VAH / VAL)", value=False, key="cfg_val_vah")
+        show_volume = st.checkbox("Histograma de Volumen", value=True, key="cfg_volume")
+        
+        st.markdown("---")
+        st.markdown("##### 2. Pipeline en Vivo & Sincronización")
+        live_ws = get_live_ws_candle(ticker)
+        if live_ws:
+            st.markdown(
+                f"<div style='background:rgba(16,185,129,0.15); border:1px solid #10b981; border-radius:6px; padding:8px; font-size:0.8rem;'>"
+                f"🟢 <b>WebSocket Binance Conectado</b><br>"
+                f"Precio vivo: <b>${live_ws.get('close', 0.0):,.2f}</b><br>"
+                f"CVD tiempo real: <b>{live_ws.get('cvd', 0.0):+,.2f}</b><br>"
+                f"Trades vela 5m: <b>{live_ws.get('trades_count', 0)}</b>"
+                f"</div>",
+                unsafe_allow_html=True
             )
-            if gemini_key_input != st.session_state.get("gemini_api_key", ""):
-                st.session_state["gemini_api_key"] = gemini_key_input
-                st.success("Clave Gemini actualizada.")
+        else:
+            st.markdown(
+                "<div style='background:rgba(148,163,184,0.1); border:1px solid #334155; border-radius:6px; padding:8px; font-size:0.8rem; color:#94a3b8;'>"
+                "⚪ <b>Worker Offline</b><br>"
+                "Ejecuta en terminal:<br><code>python3 -m src.pipeline.ws_binance_worker</code>"
+                "</div>",
+                unsafe_allow_html=True
+            )
+        
+        col_s1, col_s2 = st.columns(2)
+        with col_s1:
+            if st.button("Sincronizar Activo", use_container_width=True, type="primary", key="pop_sync"):
+                with st.spinner(f"Sincronizando {ticker} con Snowflake..."):
+                    try:
+                        sync_single_asset(market=market_choice, ticker=ticker, timeframe=timeframe, days=days_lookback)
+                        st.cache_data.clear()
+                        clear_gold_tools_cache()
+                        st.success("Sincronizado.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error al sincronizar con Snowflake: {e}")
+        with col_s2:
+            if st.button("Purgar Caché", use_container_width=True, key="pop_purge"):
+                st.cache_data.clear()
+                clear_gold_tools_cache()
+                st.toast("Caché purgada.", icon="✅")
+                st.rerun()
+
+        st.markdown("---")
+        st.markdown("##### 3. Gestión de Capital")
+        equity = st.number_input("Capital Institucional (USD)", min_value=1000.0, value=100000.0, step=10000.0, key="pop_equity")
+
+        st.markdown("---")
+        st.markdown("##### 4. Configuración Gemini API")
+        gemini_key_input = st.text_input(
+            "Gemini API Key:",
+            value=st.session_state.get("gemini_api_key", ""),
+            type="password",
+            placeholder="AIzaSy...",
+            key="pop_gemini_key",
+            help="Clave API de Google Gemini para habilitar el razonamiento institucional."
+        )
+        if gemini_key_input != st.session_state.get("gemini_api_key", ""):
+            st.session_state["gemini_api_key"] = gemini_key_input
+            st.success("Clave Gemini actualizada.")
 
     # 5. TAB NAVIGATION (Terminal Gráfica a Pantalla Completa & Comité CRO)
     tab_chart, tab_committee = st.tabs([
