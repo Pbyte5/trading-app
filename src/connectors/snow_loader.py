@@ -23,6 +23,34 @@ def format_timestamp(ts: Union[str, int, float, datetime]) -> str:
     return str(ts)
 
 
+def get_latest_timestamp_in_silver(market: str, ticker: str, timeframe: str) -> Optional[datetime]:
+    """Retrieve MAX(TIMESTAMP_UTC) from SILVER_CLEAN.MARKET_CANDLES for incremental loading."""
+    conn = get_raw_connection(query_tag="CHECK_MAX_TIMESTAMP")
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT MAX(TIMESTAMP_UTC)
+                FROM QUANT_INSTITUTIONAL_DB.SILVER_CLEAN.MARKET_CANDLES
+                WHERE MARKET = %s AND TICKER = %s AND TIMEFRAME = %s
+            """, (market.upper(), ticker.upper(), timeframe.lower()))
+            row = cur.fetchone()
+            if row and row[0] is not None:
+                val = row[0]
+                if isinstance(val, datetime):
+                    return val.replace(tzinfo=timezone.utc) if val.tzinfo is None else val
+                try:
+                    dt = datetime.fromisoformat(str(val))
+                    return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
+                except Exception:
+                    return None
+            return None
+    except Exception as e:
+        print(f"[!] Error consultando max timestamp para {market}:{ticker}: {e}")
+        return None
+    finally:
+        conn.close()
+
+
 def load_raw_to_bronze(
     records: List[Dict[str, Any]],
     table_name: str = "RAW_MARKET_FEED",
@@ -31,116 +59,79 @@ def load_raw_to_bronze(
     ticker: str = "UNKNOWN",
     timeframe: str = "1h"
 ) -> int:
-    """Insert raw JSON records into QUANT_INSTITUTIONAL_DB.BRONZE_RAW."""
+    """Insert raw JSON records into QUANT_INSTITUTIONAL_DB.BRONZE_RAW using parameterized SQL."""
     if not records:
         print(f"[!] Sin registros crudos para cargar en BRONZE_RAW.{table_name}")
         return 0
 
     print(f"[*] Cargando {len(records)} registros en BRONZE_RAW.{table_name} ({market}:{ticker}:{timeframe})...")
 
-    # Connect to Snowflake
-    try:
-        session = get_snowpark_session()
-        use_snowpark = True
-    except Exception:
-        session = get_raw_connection()
-        use_snowpark = False
-
+    conn = get_raw_connection(query_tag="BRONZE_RAW_LOAD")
     try:
         ingestion_id = str(uuid.uuid4())
         payload_json = json.dumps(records)
-        # Escape single quotes in JSON string
-        payload_escaped = payload_json.replace("'", "''")
 
-        if table_name == "RAW_MACRO_FEED":
-            sql = f"""
+        safe_table = "RAW_MACRO_FEED" if table_name == "RAW_MACRO_FEED" else "RAW_MARKET_FEED"
+
+        if safe_table == "RAW_MACRO_FEED":
+            sql = """
             INSERT INTO QUANT_INSTITUTIONAL_DB.BRONZE_RAW.RAW_MACRO_FEED 
             (INGESTION_ID, SOURCE, SERIES_OR_CIK, PERIOD_DATE, INGESTED_AT, RAW_PAYLOAD)
-            SELECT 
-                '{ingestion_id}',
-                '{source}',
-                '{ticker}',
-                CURRENT_DATE(),
-                CURRENT_TIMESTAMP(),
-                PARSE_JSON('{payload_escaped}')
+            SELECT %s, %s, %s, CURRENT_DATE(), CURRENT_TIMESTAMP(), PARSE_JSON(%s)
             """
+            params = (ingestion_id, source, ticker.upper(), payload_json)
         else:
-            sql = f"""
-            INSERT INTO QUANT_INSTITUTIONAL_DB.BRONZE_RAW.{table_name} 
+            sql = """
+            INSERT INTO QUANT_INSTITUTIONAL_DB.BRONZE_RAW.RAW_MARKET_FEED 
             (INGESTION_ID, SOURCE, MARKET, TICKER, TIMEFRAME, INGESTED_AT, RAW_PAYLOAD)
-            SELECT 
-                '{ingestion_id}',
-                '{source}',
-                '{market}',
-                '{ticker}',
-                '{timeframe}',
-                CURRENT_TIMESTAMP(),
-                PARSE_JSON('{payload_escaped}')
+            SELECT %s, %s, %s, %s, %s, CURRENT_TIMESTAMP(), PARSE_JSON(%s)
             """
+            params = (ingestion_id, source, market.upper(), ticker.upper(), timeframe.lower(), payload_json)
 
-        if use_snowpark:
-            session.sql(sql).collect()
-        else:
-            with session.cursor() as cur:
-                cur.execute(sql)
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
 
-        print(f"[OK] {len(records)} registros cargados exitosamente en BRONZE_RAW.{table_name}")
+        print(f"[OK] {len(records)} registros cargados exitosamente en BRONZE_RAW.{safe_table}")
         return len(records)
     finally:
-        session.close()
+        conn.close()
 
 
 def upsert_candles_to_silver(candles: List[Dict[str, Any]]) -> int:
-    """Upsert normalized candles into QUANT_INSTITUTIONAL_DB.SILVER_CLEAN.MARKET_CANDLES.
-
-    Expected dict keys per candle:
-    - MARKET (e.g. 'CRYPTO', 'EQUITIES', 'FOREX')
-    - TICKER (e.g. 'BTCUSDT', 'NVDA', 'EURUSD')
-    - TIMEFRAME (e.g. '1h', '1d')
-    - TIMESTAMP_UTC (ISO string, datetime or unix timestamp)
-    - OPEN, HIGH, LOW, CLOSE, VOLUME (numbers)
-    - EXTRA_METRICS (optional dict or None)
-    """
+    """Upsert normalized candles into QUANT_INSTITUTIONAL_DB.SILVER_CLEAN.MARKET_CANDLES using parameterized SQL."""
     if not candles:
         print("[!] Sin velas para actualizar en SILVER_CLEAN.MARKET_CANDLES")
         return 0
 
-    print(f"[*] Ejecutando MERGE (Upsert) de {len(candles)} velas en SILVER_CLEAN.MARKET_CANDLES...")
+    print(f"[*] Ejecutando MERGE parametrizado de {len(candles)} velas en SILVER_CLEAN.MARKET_CANDLES...")
 
+    conn = get_raw_connection(query_tag="SILVER_MERGE_CANDLES")
     try:
-        session = get_snowpark_session()
-        use_snowpark = True
-    except Exception:
-        session = get_raw_connection()
-        use_snowpark = False
-
-    try:
-        # Build staging VALUES list
-        value_rows = []
-        for c in candles:
-            market = str(c["MARKET"]).upper()
-            ticker = str(c["TICKER"]).upper()
-            timeframe = str(c["TIMEFRAME"]).lower()
-            ts = format_timestamp(c["TIMESTAMP_UTC"])
-            o = float(c["OPEN"])
-            h = float(c["HIGH"])
-            l = float(c["LOW"])
-            cl = float(c["CLOSE"])
-            vol = float(c["VOLUME"])
-            extra = json.dumps(c.get("EXTRA_METRICS", {})).replace("'", "''")
-
-            value_rows.append(
-                f"('{market}', '{ticker}', '{timeframe}', '{ts}'::TIMESTAMP_NTZ, "
-                f"{o}, {h}, {l}, {cl}, {vol}, '{extra}')"
-            )
-
-        # Batch in chunks of 500 to prevent oversized SQL statements
-        chunk_size = 500
+        # Batch in chunks of 250 rows to keep parameter bounds clean
+        chunk_size = 250
         total_upserted = 0
 
-        for i in range(0, len(value_rows), chunk_size):
-            chunk = value_rows[i:i + chunk_size]
-            values_clause = ",\n    ".join(chunk)
+        for i in range(0, len(candles), chunk_size):
+            chunk = candles[i:i + chunk_size]
+            row_placeholders = []
+            flat_params = []
+
+            for c in chunk:
+                market = str(c["MARKET"]).upper()
+                ticker = str(c["TICKER"]).upper()
+                timeframe = str(c["TIMEFRAME"]).lower()
+                ts = format_timestamp(c["TIMESTAMP_UTC"])
+                o = float(c["OPEN"])
+                h = float(c["HIGH"])
+                l = float(c["LOW"])
+                cl = float(c["CLOSE"])
+                vol = float(c["VOLUME"])
+                extra = json.dumps(c.get("EXTRA_METRICS", {}))
+
+                row_placeholders.append("(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)")
+                flat_params.extend([market, ticker, timeframe, ts, o, h, l, cl, vol, extra])
+
+            values_clause = ",\n    ".join(row_placeholders)
 
             merge_sql = f"""
             MERGE INTO QUANT_INSTITUTIONAL_DB.SILVER_CLEAN.MARKET_CANDLES AS target
@@ -149,12 +140,12 @@ def upsert_candles_to_silver(candles: List[Dict[str, Any]]) -> int:
                     column1 AS MARKET,
                     column2 AS TICKER,
                     column3 AS TIMEFRAME,
-                    column4 AS TIMESTAMP_UTC,
-                    column5 AS OPEN,
-                    column6 AS HIGH,
-                    column7 AS LOW,
-                    column8 AS CLOSE,
-                    column9 AS VOLUME,
+                    column4::TIMESTAMP_NTZ AS TIMESTAMP_UTC,
+                    column5::FLOAT AS OPEN,
+                    column6::FLOAT AS HIGH,
+                    column7::FLOAT AS LOW,
+                    column8::FLOAT AS CLOSE,
+                    column9::FLOAT AS VOLUME,
                     TRY_PARSE_JSON(column10) AS EXTRA_METRICS
                 FROM VALUES
                     {values_clause}
@@ -176,17 +167,16 @@ def upsert_candles_to_silver(candles: List[Dict[str, Any]]) -> int:
                 VALUES (src.MARKET, src.TICKER, src.TIMEFRAME, src.TIMESTAMP_UTC, src.OPEN, src.HIGH, src.LOW, src.CLOSE, src.VOLUME, src.EXTRA_METRICS);
             """
 
-            if use_snowpark:
-                session.sql(merge_sql).collect()
-            else:
-                with session.cursor() as cur:
-                    cur.execute(merge_sql)
+            with conn.cursor() as cur:
+                cur.execute(merge_sql, flat_params)
+
             total_upserted += len(chunk)
 
         print(f"[OK] {total_upserted} velas sincronizadas correctamente en SILVER_CLEAN.MARKET_CANDLES")
         return total_upserted
     finally:
-        session.close()
+        conn.close()
+
 
 
 def sync_single_asset(market: str, ticker: str, timeframe: str = "5m", days: int = 7) -> int:

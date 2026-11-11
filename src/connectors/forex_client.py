@@ -8,7 +8,12 @@ from typing import Any, Dict, List, Optional
 import requests
 
 from src.config.settings import get_settings
-from src.connectors.snow_loader import load_raw_to_bronze, upsert_candles_to_silver
+from src.connectors.snow_loader import (
+    load_raw_to_bronze,
+    upsert_candles_to_silver,
+    get_latest_timestamp_in_silver,
+    format_timestamp
+)
 
 
 def fetch_oanda_candles(
@@ -134,19 +139,56 @@ def fetch_cftc_cot_report(market_code: str = "099741") -> Dict[str, Any]:
         return {}
 
 
+def is_forex_market_open() -> bool:
+    """Forex operates 24/5 from Sunday 21:00 UTC through Friday 21:00 UTC."""
+    now_utc = datetime.now(timezone.utc)
+    wd = now_utc.weekday()
+    # Saturday (5) is always closed
+    if wd == 5:
+        return False
+    # Sunday before 21:00 UTC is closed
+    if wd == 6 and now_utc.hour < 21:
+        return False
+    # Friday after 21:00 UTC is closed
+    if wd == 4 and now_utc.hour >= 21:
+        return False
+    return True
+
+
 def fetch_and_load_forex(
     ticker: str = "EURUSD",
     timeframe: str = "5m",
     days: int = 7,
-    limit: Optional[int] = None
-) -> Dict[str, int]:
-    """Download forex candles and store in BRONZE and SILVER."""
-    print(f"\n[FOREX] Descargando velas para {ticker} ({timeframe}, últimos {days} días)...")
+    limit: Optional[int] = None,
+    enforce_market_hours: bool = False
+) -> Dict[str, Any]:
+    """Download forex candles incrementally and store in BRONZE and SILVER."""
+    if enforce_market_hours and not is_forex_market_open():
+        print(f"[FOREX] Mercado Forex cerrado el fin de semana para {ticker}. Omitiendo sondeo.")
+        return {"bronze_loaded": 0, "silver_upserted": 0, "status": "MARKET_CLOSED"}
+
+    last_ts = get_latest_timestamp_in_silver("FOREX", ticker, timeframe)
+    last_ts_str = format_timestamp(last_ts) if last_ts else None
+
+    effective_days = 2 if last_ts else days
+    print(f"\n[FOREX] Consultando velas para {ticker} ({timeframe}, delta desde {last_ts_str or 'inicio'})...")
+
     inst = f"{ticker[:3]}_{ticker[3:]}" if len(ticker) == 6 else ticker
-    candles = fetch_oanda_candles(instrument=inst, timeframe=timeframe, days=days, count=limit)
+    candles = fetch_oanda_candles(instrument=inst, timeframe=timeframe, days=effective_days, count=limit)
+
+    if last_ts_str:
+        new_candles = [c for c in candles if format_timestamp(c["TIMESTAMP_UTC"]) > last_ts_str]
+    else:
+        new_candles = candles
+
+    if not new_candles:
+        print(f"[FOREX] {ticker} ({timeframe}) al día hasta {last_ts_str}. Sin nuevas velas. Cero cómputo Snowflake.")
+        return {"bronze_loaded": 0, "silver_upserted": 0, "status": "UP_TO_DATE"}
+
+    print(f"[FOREX] {len(new_candles)} nuevas velas cerradas encontradas para {ticker} ({timeframe}).")
 
     bronze_count = load_raw_to_bronze(
-        records=candles,
+        records=new_candles,
         table_name="RAW_MARKET_FEED",
         source="OANDA_OR_FALLBACK",
         market="FOREX",
@@ -154,6 +196,7 @@ def fetch_and_load_forex(
         timeframe=timeframe
     )
 
-    silver_count = upsert_candles_to_silver(candles)
-    return {"bronze_loaded": bronze_count, "silver_upserted": silver_count}
+    silver_count = upsert_candles_to_silver(new_candles)
+    return {"bronze_loaded": bronze_count, "silver_upserted": silver_count, "status": "SYNCED"}
+
 

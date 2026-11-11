@@ -72,8 +72,31 @@ def get_fallback_macro_data(series_id: str) -> List[Dict[str, Any]]:
     }]
 
 
-def fetch_and_load_macro() -> int:
-    """Fetch key macroeconomic series (FEDFUNDS, T10Y2Y, VIX) and insert into Bronze."""
+def check_macro_loaded_today() -> bool:
+    """Return True if macro data has already been ingested today into BRONZE_RAW.RAW_MACRO_FEED."""
+    conn = get_raw_connection(query_tag="CHECK_MACRO_DAILY")
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT COUNT(*)
+                FROM QUANT_INSTITUTIONAL_DB.BRONZE_RAW.RAW_MACRO_FEED
+                WHERE PERIOD_DATE >= CURRENT_DATE()
+            """)
+            cnt = cur.fetchone()[0]
+            return cnt > 0
+    except Exception as e:
+        print(f"[!] Error verificando ingesta macro diaria: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def fetch_and_load_macro(force: bool = False) -> int:
+    """Fetch key macroeconomic series (FEDFUNDS, T10Y2Y, VIX) 1x daily into Bronze."""
+    if not force and check_macro_loaded_today():
+        print("[MACRO] Datos macroeconómicos ya fueron actualizados hoy. Omitiendo ingesta para ahorrar créditos Snowflake.")
+        return 0
+
     print("\n[MACRO] Consultando métricas macroeconómicas de FRED...")
     series_list = ["FEDFUNDS", "T10Y2Y", "VIXCLS", "CPIAUCSL"]
 

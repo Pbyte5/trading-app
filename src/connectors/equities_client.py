@@ -9,7 +9,12 @@ from typing import Any, Dict, List, Optional
 import requests
 
 from src.config.settings import get_settings
-from src.connectors.snow_loader import load_raw_to_bronze, upsert_candles_to_silver
+from src.connectors.snow_loader import (
+    load_raw_to_bronze,
+    upsert_candles_to_silver,
+    get_latest_timestamp_in_silver,
+    format_timestamp
+)
 
 
 def fetch_alpaca_bars(
@@ -157,18 +162,50 @@ def fetch_fallback_equity_bars(
         return candles
 
 
+def is_us_equity_market_open() -> bool:
+    """Return True if US stock markets are open (09:30 - 16:00 EST, Mon-Fri)."""
+    # NYC is UTC-5 (or UTC-4 in daylight savings)
+    now_utc = datetime.now(timezone.utc)
+    if now_utc.weekday() >= 5:  # Saturday or Sunday
+        return False
+    # Approximate US market hours in UTC: 13:30 to 21:00 UTC (winter) or 14:30 to 20:00 UTC
+    hour_utc = now_utc.hour + (now_utc.minute / 60.0)
+    return 13.5 <= hour_utc <= 21.0
+
+
 def fetch_and_load_equities(
     ticker: str = "NVDA",
     timeframe: str = "5m",
     days: int = 7,
-    limit: Optional[int] = None
-) -> Dict[str, int]:
-    """Fetch equity data, store raw in BRONZE and normalized in SILVER."""
-    print(f"\n[ACCIONES] Descargando velas para {ticker} ({timeframe}, últimos {days} días)...")
-    candles = fetch_alpaca_bars(ticker=ticker, timeframe=timeframe, days=days, limit=limit)
+    limit: Optional[int] = None,
+    enforce_market_hours: bool = False
+) -> Dict[str, Any]:
+    """Fetch equity data incrementally, store raw in BRONZE and normalized in SILVER."""
+    if enforce_market_hours and not is_us_equity_market_open():
+        print(f"[ACCIONES] Mercado cerrado para {ticker}. Omitiendo sondeo para ahorrar cómputo.")
+        return {"bronze_loaded": 0, "silver_upserted": 0, "status": "MARKET_CLOSED"}
+
+    last_ts = get_latest_timestamp_in_silver("EQUITIES", ticker, timeframe)
+    last_ts_str = format_timestamp(last_ts) if last_ts else None
+
+    # If we already have recent data, only fetch lookback needed for delta
+    effective_days = 2 if last_ts else days
+    print(f"\n[ACCIONES] Consultando velas para {ticker} ({timeframe}, delta desde {last_ts_str or 'inicio'})...")
+    candles = fetch_alpaca_bars(ticker=ticker, timeframe=timeframe, days=effective_days, limit=limit)
+
+    if last_ts_str:
+        new_candles = [c for c in candles if format_timestamp(c["TIMESTAMP_UTC"]) > last_ts_str]
+    else:
+        new_candles = candles
+
+    if not new_candles:
+        print(f"[ACCIONES] {ticker} ({timeframe}) al día hasta {last_ts_str}. Sin nuevas velas. Cero cómputo Snowflake.")
+        return {"bronze_loaded": 0, "silver_upserted": 0, "status": "UP_TO_DATE"}
+
+    print(f"[ACCIONES] {len(new_candles)} nuevas velas cerradas encontradas para {ticker} ({timeframe}).")
 
     bronze_count = load_raw_to_bronze(
-        records=candles,
+        records=new_candles,
         table_name="RAW_MARKET_FEED",
         source="ALPACA_OR_FALLBACK",
         market="EQUITIES",
@@ -176,6 +213,7 @@ def fetch_and_load_equities(
         timeframe=timeframe
     )
 
-    silver_count = upsert_candles_to_silver(candles)
-    return {"bronze_loaded": bronze_count, "silver_upserted": silver_count}
+    silver_count = upsert_candles_to_silver(new_candles)
+    return {"bronze_loaded": bronze_count, "silver_upserted": silver_count, "status": "SYNCED"}
+
 
