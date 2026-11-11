@@ -6,24 +6,20 @@ import numpy as np
 
 
 def compute_atr(candles: List[Dict[str, float]], period: int = 14) -> float:
-    """Calculate Average True Range (ATR) over N periods."""
+    """Calculate Average True Range (ATR) over N periods using vectorized NumPy operations."""
     if len(candles) < 2:
         return 0.0
 
-    true_ranges = []
-    for i in range(1, len(candles)):
-        high = candles[i]["HIGH"]
-        low = candles[i]["LOW"]
-        prev_close = candles[i - 1]["CLOSE"]
+    highs = np.array([float(c["HIGH"]) for c in candles], dtype=np.float64)
+    lows = np.array([float(c["LOW"]) for c in candles], dtype=np.float64)
+    closes = np.array([float(c["CLOSE"]) for c in candles], dtype=np.float64)
 
-        tr = max(
-            high - low,
-            abs(high - prev_close),
-            abs(low - prev_close)
-        )
-        true_ranges.append(tr)
+    tr1 = highs[1:] - lows[1:]
+    tr2 = np.abs(highs[1:] - closes[:-1])
+    tr3 = np.abs(lows[1:] - closes[:-1])
 
-    if not true_ranges:
+    true_ranges = np.maximum(tr1, np.maximum(tr2, tr3))
+    if len(true_ranges) == 0:
         return 0.0
 
     subset = true_ranges[-period:]

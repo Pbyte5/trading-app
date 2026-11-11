@@ -17,27 +17,16 @@ def compute_vwap_and_bands(candles: List[Dict[str, Any]]) -> Dict[str, float]:
     if not candles:
         return {}
 
-    cum_vol = 0.0
-    cum_pv = 0.0
+    highs = np.array([float(c["HIGH"]) for c in candles], dtype=np.float64)
+    lows = np.array([float(c["LOW"]) for c in candles], dtype=np.float64)
+    closes = np.array([float(c["CLOSE"]) for c in candles], dtype=np.float64)
+    volumes = np.array([float(c["VOLUME"]) for c in candles], dtype=np.float64)
 
-    typical_prices = []
-    volumes = []
-
-    for c in candles:
-        h = float(c["HIGH"])
-        l = float(c["LOW"])
-        cl = float(c["CLOSE"])
-        v = float(c["VOLUME"])
-        tp = (h + l + cl) / 3.0
-
-        typical_prices.append(tp)
-        volumes.append(v)
-
-        cum_vol += v
-        cum_pv += tp * v
+    typical_prices = (highs + lows + closes) / 3.0
+    cum_vol = float(np.sum(volumes))
 
     if cum_vol == 0:
-        last_close = float(candles[-1]["CLOSE"])
+        last_close = float(closes[-1])
         return {
             "vwap": last_close,
             "vwap_upper_1": last_close,
@@ -46,12 +35,11 @@ def compute_vwap_and_bands(candles: List[Dict[str, Any]]) -> Dict[str, float]:
             "vwap_lower_2": last_close,
             "vwap_upper_3": last_close,
             "vwap_lower_3": last_close,
+            "vwap_std_dev": 0.0
         }
 
-    vwap = cum_pv / cum_vol
-
-    # Weighted standard deviation: sqrt( sum( v * (tp - vwap)^2 ) / sum(v) )
-    sum_sq_diff = sum(v * ((tp - vwap) ** 2) for tp, v in zip(typical_prices, volumes))
+    vwap = float(np.sum(typical_prices * volumes) / cum_vol)
+    sum_sq_diff = float(np.sum(volumes * ((typical_prices - vwap) ** 2)))
     variance = sum_sq_diff / cum_vol
     std_dev = math.sqrt(variance)
 
@@ -72,36 +60,33 @@ def compute_volume_profile(candles: List[Dict[str, Any]], num_bins: int = 50) ->
     if not candles:
         return {"poc": 0.0, "vah": 0.0, "val": 0.0}
 
-    min_p = min(float(c["LOW"]) for c in candles)
-    max_p = max(float(c["HIGH"]) for c in candles)
+    lows = np.array([float(c["LOW"]) for c in candles], dtype=np.float64)
+    highs = np.array([float(c["HIGH"]) for c in candles], dtype=np.float64)
+    volumes = np.array([float(c["VOLUME"]) for c in candles], dtype=np.float64)
+    closes = np.array([float(c["CLOSE"]) for c in candles], dtype=np.float64)
+
+    min_p = float(np.min(lows))
+    max_p = float(np.max(highs))
 
     if max_p == min_p:
-        p = float(candles[-1]["CLOSE"])
+        p = float(closes[-1])
         return {"poc": p, "vah": p, "val": p}
 
     bin_size = (max_p - min_p) / num_bins
-    bins = [min_p + i * bin_size for i in range(num_bins + 1)]
-    volume_by_bin = [0.0] * num_bins
+    bins = np.array([min_p + i * bin_size for i in range(num_bins + 1)], dtype=np.float64)
 
-    # Allocate candle volume proportionally across overlapping bins
-    for c in candles:
-        c_low = float(c["LOW"])
-        c_high = float(c["HIGH"])
-        vol = float(c["VOLUME"])
-        c_range = max(c_high - c_low, 1e-8)
+    c_ranges = np.maximum(highs - lows, 1e-8)
+    b_low = bins[:-1]
+    b_high = bins[1:]
 
-        for b_idx in range(num_bins):
-            b_low = bins[b_idx]
-            b_high = bins[b_idx + 1]
+    # Broadcast (N_candles, 1) with (1, num_bins) for vectorized overlap calculation
+    overlap = np.maximum(0.0, np.minimum(highs[:, None], b_high[None, :]) - np.maximum(lows[:, None], b_low[None, :]))
+    fractions = overlap / c_ranges[:, None]
+    volume_by_bin = np.sum(volumes[:, None] * fractions, axis=0)
 
-            overlap = max(0.0, min(c_high, b_high) - max(c_low, b_low))
-            if overlap > 0:
-                fraction = overlap / c_range
-                volume_by_bin[b_idx] += vol * fraction
-
-    total_vol = sum(volume_by_bin)
+    total_vol = float(np.sum(volume_by_bin))
     if total_vol == 0:
-        p = float(candles[-1]["CLOSE"])
+        p = float(closes[-1])
         return {"poc": p, "vah": p, "val": p}
 
     # POC = price level of bin with max volume
@@ -110,7 +95,7 @@ def compute_volume_profile(candles: List[Dict[str, Any]], num_bins: int = 50) ->
 
     # Value Area = 70% of total volume expanding outward from POC
     target_vol = 0.70 * total_vol
-    current_vol = volume_by_bin[max_bin_idx]
+    current_vol = float(volume_by_bin[max_bin_idx])
 
     low_idx = max_bin_idx
     high_idx = max_bin_idx
@@ -132,44 +117,52 @@ def compute_volume_profile(candles: List[Dict[str, Any]], num_bins: int = 50) ->
     vah_price = bins[high_idx + 1]
 
     return {
-        "poc": round(poc_price, 4),
-        "vah": round(vah_price, 4),
-        "val": round(val_price, 4),
-        "value_area_volume_ratio": round(current_vol / total_vol, 3)
+        "poc": round(float(poc_price), 4),
+        "vah": round(float(vah_price), 4),
+        "val": round(float(val_price), 4),
+        "value_area_volume_ratio": round(float(current_vol / total_vol), 3)
     }
 
 
-def find_liquidity_pools(candles: List[Dict[str, Any]], atr: float) -> Dict[str, List[float]]:
-    """Detect unmitigated equal highs and equal lows with 0.1 * ATR tolerance."""
+def find_liquidity_pools(candles: List[Dict[str, Any]], atr: float, max_window: Optional[int] = None) -> Dict[str, List[float]]:
+    """Detect unmitigated equal highs and equal lows with 0.1 * ATR tolerance using vectorized NumPy candidate filtering."""
     if len(candles) < 5 or atr <= 0:
         return {"equal_highs": [], "equal_lows": []}
 
+    candles_window = candles[-max_window:] if (max_window and len(candles) > max_window) else candles
+    highs = np.array([float(c["HIGH"]) for c in candles_window], dtype=np.float64)
+    lows = np.array([float(c["LOW"]) for c in candles_window], dtype=np.float64)
+    n = len(candles_window)
     tolerance = 0.10 * atr
-    highs = [float(c["HIGH"]) for c in candles]
-    lows = [float(c["LOW"]) for c in candles]
+
+    # Vectorized upper-triangular pair index with j >= i + 2
+    i_idx, j_idx = np.triu_indices(n, k=2)
+
+    # Check Equal Highs candidate mask
+    h_diff = np.abs(highs[i_idx] - highs[j_idx])
+    h_mask = h_diff <= tolerance
+
+    # Check Equal Lows candidate mask
+    l_diff = np.abs(lows[i_idx] - lows[j_idx])
+    l_mask = l_diff <= tolerance
 
     equal_highs = []
+    for i, j in zip(i_idx[h_mask], j_idx[h_mask]):
+        max_inter = np.max(highs[i:j])
+        if max_inter <= max(highs[i], highs[j]) + tolerance:
+            equal_highs.append(round(float((highs[i] + highs[j]) / 2.0), 4))
+
     equal_lows = []
-
-    for i in range(len(candles) - 1):
-        for j in range(i + 2, len(candles)):
-            # Check Equal Highs
-            if abs(highs[i] - highs[j]) <= tolerance:
-                # Verify intermediate prices did not breach this level
-                max_inter = max(highs[i:j])
-                if max_inter <= max(highs[i], highs[j]) + tolerance:
-                    equal_highs.append(round((highs[i] + highs[j]) / 2.0, 4))
-
-            # Check Equal Lows
-            if abs(lows[i] - lows[j]) <= tolerance:
-                min_inter = min(lows[i:j])
-                if min_inter >= min(lows[i], lows[j]) - tolerance:
-                    equal_lows.append(round((lows[i] + lows[j]) / 2.0, 4))
+    for i, j in zip(i_idx[l_mask], j_idx[l_mask]):
+        min_inter = np.min(lows[i:j])
+        if min_inter >= min(lows[i], lows[j]) - tolerance:
+            equal_lows.append(round(float((lows[i] + lows[j]) / 2.0), 4))
 
     return {
         "equal_highs": list(set(equal_highs))[-3:],
         "equal_lows": list(set(equal_lows))[-3:]
     }
+
 
 
 def compute_cvd_approximation(candles: List[Dict[str, Any]]) -> float:
@@ -206,64 +199,44 @@ def compute_cvd_approximation(candles: List[Dict[str, Any]]) -> float:
 def process_quant_state_for_ticker(
     market: str,
     ticker: str,
-    timeframe: str = "1h"
+    timeframe: str = "1h",
+    lookback: int = 300
 ) -> Dict[str, Any]:
     """Fetch candles from SILVER, calculate all quantitative metrics, and save to GOLD."""
-    print(f"\n[*] Calculando estado cuantitativo para {market}:{ticker} ({timeframe})...")
+    print(f"\n[*] Calculando estado cuantitativo para {market}:{ticker} ({timeframe}) [lookback={lookback}]...")
 
-    try:
-        session = get_snowpark_session()
-        use_snowpark = True
-    except Exception:
-        session = get_raw_connection()
-        use_snowpark = False
+    conn = get_raw_connection(query_tag="QUANT_MICROSTRUCTURE")
 
-    query = f"""
+    query = """
     SELECT 
         MARKET, TICKER, TIMEFRAME, TIMESTAMP_UTC, OPEN, HIGH, LOW, CLOSE, VOLUME, EXTRA_METRICS
     FROM QUANT_INSTITUTIONAL_DB.SILVER_CLEAN.MARKET_CANDLES
-    WHERE MARKET = '{market.upper()}' 
-      AND TICKER = '{ticker.upper()}' 
-      AND TIMEFRAME = '{timeframe.lower()}'
+    WHERE MARKET = %s 
+      AND TICKER = %s 
+      AND TIMEFRAME = %s
     ORDER BY TIMESTAMP_UTC DESC
-    LIMIT 2500
+    LIMIT %s
     """
 
     candles = []
     try:
-        if use_snowpark:
-            rows = session.sql(query).collect()
-            for r in rows:
+        with conn.cursor() as cur:
+            cur.execute(query, (market.upper(), ticker.upper(), timeframe.lower(), lookback))
+            for r in cur.fetchall():
                 candles.append({
-                    "MARKET": r["MARKET"],
-                    "TICKER": r["TICKER"],
-                    "TIMEFRAME": r["TIMEFRAME"],
-                    "TIMESTAMP_UTC": str(r["TIMESTAMP_UTC"]),
-                    "OPEN": float(r["OPEN"]),
-                    "HIGH": float(r["HIGH"]),
-                    "LOW": float(r["LOW"]),
-                    "CLOSE": float(r["CLOSE"]),
-                    "VOLUME": float(r["VOLUME"]),
-                    "EXTRA_METRICS": r["EXTRA_METRICS"]
+                    "MARKET": r[0],
+                    "TICKER": r[1],
+                    "TIMEFRAME": r[2],
+                    "TIMESTAMP_UTC": str(r[3]),
+                    "OPEN": float(r[4]),
+                    "HIGH": float(r[5]),
+                    "LOW": float(r[6]),
+                    "CLOSE": float(r[7]),
+                    "VOLUME": float(r[8]),
+                    "EXTRA_METRICS": r[9]
                 })
-        else:
-            with session.cursor() as cur:
-                cur.execute(query)
-                for r in cur.fetchall():
-                    candles.append({
-                        "MARKET": r[0],
-                        "TICKER": r[1],
-                        "TIMEFRAME": r[2],
-                        "TIMESTAMP_UTC": str(r[3]),
-                        "OPEN": float(r[4]),
-                        "HIGH": float(r[5]),
-                        "LOW": float(r[6]),
-                        "CLOSE": float(r[7]),
-                        "VOLUME": float(r[8]),
-                        "EXTRA_METRICS": r[9]
-                    })
     finally:
-        session.close()
+        conn.close()
 
     if not candles:
         print(f"[!] No hay velas registradas en SILVER_CLEAN para {market}:{ticker}:{timeframe}")
@@ -277,7 +250,7 @@ def process_quant_state_for_ticker(
     vp_res = compute_volume_profile(candles)
     regime_res = detect_regime(candles)
     atr_val = regime_res["atr"]
-    pools = find_liquidity_pools(candles, atr=atr_val)
+    pools = find_liquidity_pools(candles, atr=atr_val, max_window=lookback)
     cvd_val = compute_cvd_approximation(candles)
 
     latest = candles[-1]
@@ -302,13 +275,8 @@ def process_quant_state_for_ticker(
 
 
 def save_gold_market_state(state: Dict[str, Any]) -> None:
-    """Save calculated state into QUANT_INSTITUTIONAL_DB.GOLD_QUANT_RAG.QUANT_MARKET_STATES."""
-    try:
-        session = get_snowpark_session()
-        use_snowpark = True
-    except Exception:
-        session = get_raw_connection()
-        use_snowpark = False
+    """Save calculated state into QUANT_INSTITUTIONAL_DB.GOLD_QUANT_RAG.QUANT_MARKET_STATES with parameterized SQL."""
+    conn = get_raw_connection(query_tag="GOLD_MERGE_STATE")
 
     try:
         m = state["market"]
@@ -316,48 +284,48 @@ def save_gold_market_state(state: Dict[str, Any]) -> None:
         tf = state["timeframe"]
         ts = state["latest_timestamp_utc"]
 
-        vwap = state["vwap_metrics"].get("vwap", 0.0)
-        u1 = state["vwap_metrics"].get("vwap_upper_1", 0.0)
-        l1 = state["vwap_metrics"].get("vwap_lower_1", 0.0)
-        u2 = state["vwap_metrics"].get("vwap_upper_2", 0.0)
-        l2 = state["vwap_metrics"].get("vwap_lower_2", 0.0)
-        u3 = state["vwap_metrics"].get("vwap_upper_3", 0.0)
-        l3 = state["vwap_metrics"].get("vwap_lower_3", 0.0)
+        vwap = float(state["vwap_metrics"].get("vwap", 0.0))
+        u1 = float(state["vwap_metrics"].get("vwap_upper_1", 0.0))
+        l1 = float(state["vwap_metrics"].get("vwap_lower_1", 0.0))
+        u2 = float(state["vwap_metrics"].get("vwap_upper_2", 0.0))
+        l2 = float(state["vwap_metrics"].get("vwap_lower_2", 0.0))
+        u3 = float(state["vwap_metrics"].get("vwap_upper_3", 0.0))
+        l3 = float(state["vwap_metrics"].get("vwap_lower_3", 0.0))
 
-        poc = state["volume_profile"].get("poc", 0.0)
-        vah = state["volume_profile"].get("vah", 0.0)
-        val = state["volume_profile"].get("val", 0.0)
-        cvd = state.get("cvd", 0.0)
+        poc = float(state["volume_profile"].get("poc", 0.0))
+        vah = float(state["volume_profile"].get("vah", 0.0))
+        val = float(state["volume_profile"].get("val", 0.0))
+        cvd = float(state.get("cvd", 0.0))
 
-        atr = state["regime"].get("atr", 0.0)
-        hurst = state["regime"].get("hurst", 0.50)
-        regime = state["regime"].get("regime", "RANDOM_WALK")
+        atr = float(state["regime"].get("atr", 0.0))
+        hurst = float(state["regime"].get("hurst", 0.50))
+        regime = str(state["regime"].get("regime", "RANDOM_WALK"))
 
-        payload = json.dumps(state).replace("'", "''")
+        payload = json.dumps(state)
 
-        merge_sql = f"""
+        merge_sql = """
         MERGE INTO QUANT_INSTITUTIONAL_DB.GOLD_QUANT_RAG.QUANT_MARKET_STATES AS target
         USING (
             SELECT 
-                '{m}' AS MARKET,
-                '{tk}' AS TICKER,
-                '{tf}' AS TIMEFRAME,
-                '{ts}'::TIMESTAMP_NTZ AS TIMESTAMP_UTC,
-                {vwap} AS VWAP,
-                {u1} AS VWAP_UPPER_1,
-                {l1} AS VWAP_LOWER_1,
-                {u2} AS VWAP_UPPER_2,
-                {l2} AS VWAP_LOWER_2,
-                {u3} AS VWAP_UPPER_3,
-                {l3} AS VWAP_LOWER_3,
-                {poc} AS POC,
-                {vah} AS VAH,
-                {val} AS VAL,
-                {cvd} AS CVD,
-                {atr} AS ATR,
-                {hurst} AS HURST_EXPONENT,
-                '{regime}' AS REGIME,
-                PARSE_JSON('{payload}') AS STATE_JSON
+                %s AS MARKET,
+                %s AS TICKER,
+                %s AS TIMEFRAME,
+                %s::TIMESTAMP_NTZ AS TIMESTAMP_UTC,
+                %s AS VWAP,
+                %s AS VWAP_UPPER_1,
+                %s AS VWAP_LOWER_1,
+                %s AS VWAP_UPPER_2,
+                %s AS VWAP_LOWER_2,
+                %s AS VWAP_UPPER_3,
+                %s AS VWAP_LOWER_3,
+                %s AS POC,
+                %s AS VAH,
+                %s AS VAL,
+                %s AS CVD,
+                %s AS ATR,
+                %s AS HURST_EXPONENT,
+                %s AS REGIME,
+                PARSE_JSON(%s) AS STATE_JSON
         ) AS src
         ON target.MARKET = src.MARKET 
            AND target.TICKER = src.TICKER 
@@ -387,16 +355,19 @@ def save_gold_market_state(state: Dict[str, Any]) -> None:
                 src.POC, src.VAH, src.VAL, src.CVD, src.ATR, src.HURST_EXPONENT, src.REGIME, src.STATE_JSON
             );
         """
+        params = (
+            m, tk, tf, ts,
+            vwap, u1, l1, u2, l2, u3, l3,
+            poc, vah, val, cvd,
+            atr, hurst, regime, payload
+        )
 
-        if use_snowpark:
-            session.sql(merge_sql).collect()
-        else:
-            with session.cursor() as cur:
-                cur.execute(merge_sql)
+        with conn.cursor() as cur:
+            cur.execute(merge_sql, params)
 
         print(f"[OK] Estado guardado en GOLD_QUANT_RAG.QUANT_MARKET_STATES para {m}:{tk}:{tf}")
     finally:
-        session.close()
+        conn.close()
 
 
 def compute_all_gold_states(timeframes: Optional[List[str]] = None) -> None:
