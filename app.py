@@ -6,7 +6,9 @@ and Multi-Agent Committee Orchestration with Chief Risk Officer (CRO) Filter.
 """
 
 import json
+import time
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
@@ -23,12 +25,7 @@ from src.agents.orchestrator import generate_trade_plan
 from src.agents.gemini_service import query_gemini_agent
 from src.agents.visualizer import generate_investment_proposal_chart, generate_microstructure_radar
 from src.connectors.snow_loader import sync_single_asset
-from src.pipeline.live_daemon import (
-    get_pipeline_state,
-    start_live_daemon,
-    stop_live_daemon,
-    execute_pipeline_cycle
-)
+from src.pipeline.live_daemon import get_pipeline_state, execute_pipeline_cycle
 
 # ==============================================================================
 # 1. PAGE CONFIGURATION & INSTITUTIONAL THEME (DARK SLATE / SKY BLUE SYSTEM)
@@ -267,10 +264,10 @@ st.markdown("""
 # ==============================================================================
 # 2. DATA LOADERS & MULTI-TIER CACHING ENGINE
 # ==============================================================================
-@st.cache_data(ttl=60, show_spinner=False)
+@st.cache_data(ttl=300, show_spinner=False)
 def load_candles_from_snowflake(market: str, ticker: str, timeframe: str, limit: int = 2016) -> pd.DataFrame:
-    """Fetch normalized historical candles from SILVER_CLEAN.MARKET_CANDLES with 60s cache."""
-    sql = f"""
+    """Fetch closed historical candles from SILVER_CLEAN.MARKET_CANDLES with 300s cache."""
+    sql = """
     SELECT 
         TIMESTAMP_UTC,
         OPEN,
@@ -280,17 +277,17 @@ def load_candles_from_snowflake(market: str, ticker: str, timeframe: str, limit:
         VOLUME,
         EXTRA_METRICS
     FROM QUANT_INSTITUTIONAL_DB.SILVER_CLEAN.MARKET_CANDLES
-    WHERE MARKET = '{market.upper()}'
-      AND TICKER = '{ticker.upper()}'
-      AND TIMEFRAME = '{timeframe.lower()}'
+    WHERE MARKET = %s
+      AND TICKER = %s
+      AND TIMEFRAME = %s
     ORDER BY TIMESTAMP_UTC DESC
-    LIMIT {limit}
+    LIMIT %s
     """
     conn = None
     try:
-        conn = get_raw_connection()
+        conn = get_raw_connection(query_tag="STREAMLIT_UI_CANDLES")
         with conn.cursor() as cur:
-            cur.execute(sql)
+            cur.execute(sql, (market.upper(), ticker.upper(), timeframe.lower(), limit))
             rows = cur.fetchall()
             if not rows:
                 return pd.DataFrame()
@@ -307,6 +304,53 @@ def load_candles_from_snowflake(market: str, ticker: str, timeframe: str, limit:
     finally:
         if conn:
             conn.close()
+
+
+def get_live_ws_candle(symbol: str) -> Optional[Dict[str, Any]]:
+    """Read live forming candle and CVD from the WebSocket worker's local state file."""
+    state_file = Path("data/live_state") / f"live_{symbol.lower()}.json"
+    if not state_file.exists():
+        return None
+    try:
+        with open(state_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        # Check if the state was updated within the last 120 seconds
+        if time.time() - data.get("last_updated_epoch", 0) < 120:
+            return data
+        return None
+    except Exception:
+        return None
+
+
+def get_candles_with_live_overlay(market: str, ticker: str, timeframe: str, limit: int = 2016) -> pd.DataFrame:
+    """Combine closed historical bars from Snowflake with the live forming bar from the WebSocket worker."""
+    df = load_candles_from_snowflake(market=market, ticker=ticker, timeframe=timeframe, limit=limit)
+
+    live_candle = get_live_ws_candle(ticker)
+    if live_candle and live_candle.get("timestamp_utc"):
+        live_ts = pd.to_datetime(live_candle["timestamp_utc"])
+        live_row = {
+            "TIMESTAMP_UTC": live_ts,
+            "OPEN": float(live_candle.get("open", 0.0)),
+            "HIGH": float(live_candle.get("high", 0.0)),
+            "LOW": float(live_candle.get("low", 0.0)),
+            "CLOSE": float(live_candle.get("close", 0.0)),
+            "VOLUME": float(live_candle.get("volume", 0.0)),
+            "EXTRA_METRICS": {"cvd": live_candle.get("cvd", 0.0), "is_live_ws": True}
+        }
+
+        if df.empty:
+            df = pd.DataFrame([live_row])
+        else:
+            last_ts = df["TIMESTAMP_UTC"].iloc[-1]
+            if live_ts == last_ts:
+                for col in ["OPEN", "HIGH", "LOW", "CLOSE", "VOLUME", "EXTRA_METRICS"]:
+                    df.at[df.index[-1], col] = live_row[col]
+            elif live_ts > last_ts:
+                df = pd.concat([df, pd.DataFrame([live_row])], ignore_index=True)
+
+    return df
+
 
 
 @st.cache_data(ttl=60, show_spinner=False)
@@ -874,16 +918,26 @@ def main():
             show_val_vah = st.checkbox("Áreas de Valor (VAH / VAL)", value=False)
             show_volume = st.checkbox("Histograma de Volumen", value=True)
 
-        with st.expander("Control de Pipeline en Vivo", expanded=False):
-            col_s1, col_s2 = st.columns(2)
-            with col_s1:
-                if st.button("Iniciar Live", use_container_width=True):
-                    start_live_daemon(interval_seconds=60, days=days_lookback, timeframes=[timeframe, "1h"])
-                    st.rerun()
-            with col_s2:
-                if st.button("Detener", use_container_width=True):
-                    stop_live_daemon()
-                    st.rerun()
+        with st.expander("Worker WebSocket Cripto", expanded=True):
+            live_ws = get_live_ws_candle(ticker)
+            if live_ws:
+                st.markdown(
+                    f"<div style='background:rgba(16,185,129,0.15); border:1px solid #10b981; border-radius:6px; padding:10px; font-size:0.8rem;'>"
+                    f"🟢 <b>WebSocket Binance Conectado</b><br>"
+                    f"Precio vivo: <b>${live_ws.get('close', 0.0):,.2f}</b><br>"
+                    f"CVD tiempo real: <b>{live_ws.get('cvd', 0.0):+,.2f}</b><br>"
+                    f"Trades vela 5m: <b>{live_ws.get('trades_count', 0)}</b>"
+                    f"</div>",
+                    unsafe_allow_html=True
+                )
+            else:
+                st.markdown(
+                    "<div style='background:rgba(148,163,184,0.1); border:1px solid #334155; border-radius:6px; padding:10px; font-size:0.8rem; color:#94a3b8;'>"
+                    "⚪ <b>Worker Offline</b><br>"
+                    "Ejecuta en terminal:<br><code>python3 -m src.pipeline.ws_binance_worker</code>"
+                    "</div>",
+                    unsafe_allow_html=True
+                )
 
         with st.expander("Gestión de Capital", expanded=False):
             equity = st.number_input("Capital Institucional (USD)", min_value=1000.0, value=100000.0, step=10000.0)
@@ -901,14 +955,14 @@ def main():
                 st.success("Clave Gemini actualizada.")
 
     # 3. Load Candlestick Data & Quant State from Snowflake (Multi-tier Cache)
-    df_candles = load_candles_from_snowflake(market=market_choice, ticker=ticker, timeframe=timeframe, limit=2016)
+    df_candles = get_candles_with_live_overlay(market=market_choice, ticker=ticker, timeframe=timeframe, limit=2016)
     
     if df_candles.empty:
         with st.spinner(f"Sincronizando {market_choice}:{ticker} ({timeframe}) directamente en Snowflake..."):
             sync_single_asset(market=market_choice, ticker=ticker, timeframe=timeframe, days=days_lookback)
             st.cache_data.clear()
             clear_gold_tools_cache()
-            df_candles = load_candles_from_snowflake(market=market_choice, ticker=ticker, timeframe=timeframe, limit=2016)
+            df_candles = get_candles_with_live_overlay(market=market_choice, ticker=ticker, timeframe=timeframe, limit=2016)
 
     quant_state = load_gold_state(ticker=ticker, timeframe=timeframe, market=market_choice)
     last_price = quant_state.get("last_price", df_candles["CLOSE"].iloc[-1] if not df_candles.empty else 0.0)

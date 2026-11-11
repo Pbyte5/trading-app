@@ -8,7 +8,12 @@ from typing import Any, Dict, List, Optional
 import requests
 
 from src.config.settings import get_settings
-from src.connectors.snow_loader import load_raw_to_bronze, upsert_candles_to_silver
+from src.connectors.snow_loader import (
+    load_raw_to_bronze,
+    upsert_candles_to_silver,
+    get_latest_timestamp_in_silver,
+    format_timestamp
+)
 
 
 def fetch_binance_klines(
@@ -143,14 +148,28 @@ def fetch_and_load_crypto(
     timeframe: str = "5m",
     days: int = 7,
     limit: Optional[int] = None
-) -> Dict[str, int]:
-    """Download crypto data for up to N days, store raw in BRONZE and normalized in SILVER."""
-    print(f"\n[CRIPTO] Descargando velas para {ticker} ({timeframe}, últimos {days} días)...")
-    candles = fetch_binance_klines(ticker=ticker, timeframe=timeframe, days=days, limit=limit)
-    
-    # Ingest raw payload into Bronze
+) -> Dict[str, Any]:
+    """Download crypto data incrementally, store raw in BRONZE and normalized in SILVER."""
+    last_ts = get_latest_timestamp_in_silver("CRYPTO", ticker, timeframe)
+    last_ts_str = format_timestamp(last_ts) if last_ts else None
+
+    effective_days = 2 if last_ts else days
+    print(f"\n[CRIPTO] Consultando velas para {ticker} ({timeframe}, delta desde {last_ts_str or 'inicio'})...")
+    candles = fetch_binance_klines(ticker=ticker, timeframe=timeframe, days=effective_days, limit=limit)
+
+    if last_ts_str:
+        new_candles = [c for c in candles if format_timestamp(c["TIMESTAMP_UTC"]) > last_ts_str]
+    else:
+        new_candles = candles
+
+    if not new_candles:
+        print(f"[CRIPTO] {ticker} ({timeframe}) al día hasta {last_ts_str}. Sin nuevas velas. Cero cómputo Snowflake.")
+        return {"bronze_loaded": 0, "silver_upserted": 0, "status": "UP_TO_DATE"}
+
+    print(f"[CRIPTO] {len(new_candles)} nuevas velas encontradas para {ticker} ({timeframe}).")
+
     bronze_count = load_raw_to_bronze(
-        records=candles,
+        records=new_candles,
         table_name="RAW_MARKET_FEED",
         source="BINANCE_FUTURES",
         market="CRYPTO",
@@ -158,8 +177,7 @@ def fetch_and_load_crypto(
         timeframe=timeframe
     )
 
-    # Upsert normalized candles into Silver
-    silver_count = upsert_candles_to_silver(candles)
+    silver_count = upsert_candles_to_silver(new_candles)
+    return {"bronze_loaded": bronze_count, "silver_upserted": silver_count, "status": "SYNCED"}
 
-    return {"bronze_loaded": bronze_count, "silver_upserted": silver_count}
 
