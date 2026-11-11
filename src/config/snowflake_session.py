@@ -191,8 +191,10 @@ def get_snowpark_session(use_initial_warehouse: bool = False, query_tag: Optiona
         return SharedSnowparkSessionProxy(_shared_snowpark_session)
 
 
-def get_raw_connection(use_initial_warehouse: bool = False, query_tag: Optional[str] = None):
+def get_raw_connection(use_initial_warehouse: bool = False, query_tag: Optional[str] = None, *args, **kwargs):
     """Return a shared raw snowflake connection (or fresh one if use_initial_warehouse=True)."""
+    if "query_tag" in kwargs and not query_tag:
+        query_tag = kwargs["query_tag"]
     try:
         import snowflake.connector
     except ImportError as e:
