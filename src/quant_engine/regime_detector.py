@@ -113,4 +113,3 @@ def detect_regime(candles: List[Dict[str, float]]) -> Dict[str, Any]:
         "regime": regime,
         "regime_description": desc
     }
-

@@ -18,7 +18,7 @@ import streamlit.components.v1 as components
 
 from src.config.settings import get_settings
 from src.config.snowflake_session import get_raw_connection, get_snowpark_session
-from src.mcp_server.snowflake_quant_tools import get_gold_market_state
+from src.mcp_server.snowflake_quant_tools import get_gold_market_state, clear_gold_tools_cache
 from src.agents.orchestrator import generate_trade_plan
 from src.agents.gemini_service import query_gemini_agent
 from src.agents.visualizer import generate_investment_proposal_chart, generate_microstructure_radar
@@ -31,70 +31,127 @@ from src.pipeline.live_daemon import (
 )
 
 # ==============================================================================
-# 1. PAGE CONFIGURATION & INSTITUTIONAL THEME
+# 1. PAGE CONFIGURATION & INSTITUTIONAL THEME (DARK SLATE / SKY BLUE SYSTEM)
 # ==============================================================================
 st.set_page_config(
     page_title="Plataforma de Análisis de Mercado",
-    page_icon="📈",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# High-End TradingView/Bloomberg Dark Styling (Low saturation, clean contrasts)
+# Institutional Theme Styling (Slate #090d16, Cards #0f172a, Sky Blue #38bdf8, Emerald #10b981)
 st.markdown("""
 <style>
-    /* Dark Terminal Background */
+    /* 1. Base App Canvas (Deep Dark Slate) */
     .stApp {
-        background-color: #080c14;
+        background-color: #090d16;
         color: #e2e8f0;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     }
     
-    /* Top Header Bar */
+    /* Transparent top header so custom buttons stay visible */
+    header[data-testid="stHeader"] {
+        background-color: transparent !important;
+        z-index: 100 !important;
+    }
+
+    /* 2. HIGH-CONTRAST SKY BLUE HAMBURGER & SIDEBAR TOGGLE BUTTON */
+    [data-testid="collapsedControl"],
+    [data-testid="stSidebarCollapseButton"] button,
+    button[data-testid="baseButton-header"],
+    div[data-testid="stSidebarCollapsedControl"] button,
+    button[kind="header"] {
+        background-color: #0f172a !important;
+        border: 1.5px solid #38bdf8 !important;
+        color: #38bdf8 !important;
+        border-radius: 8px !important;
+        padding: 6px 12px !important;
+        box-shadow: 0 0 14px rgba(56, 189, 248, 0.35) !important;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        opacity: 1 !important;
+        visibility: visible !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+    }
+    [data-testid="collapsedControl"]:hover,
+    [data-testid="stSidebarCollapseButton"] button:hover,
+    button[data-testid="baseButton-header"]:hover {
+        background-color: #38bdf8 !important;
+        color: #090d16 !important;
+        box-shadow: 0 0 20px rgba(56, 189, 248, 0.65) !important;
+        transform: scale(1.06) !important;
+    }
+    [data-testid="collapsedControl"] svg,
+    [data-testid="stSidebarCollapseButton"] svg,
+    button[data-testid="baseButton-header"] svg {
+        stroke: currentColor !important;
+        fill: currentColor !important;
+        width: 22px !important;
+        height: 22px !important;
+    }
+
+    /* 3. Accessibility Focus Indicator */
+    button:focus-visible, input:focus-visible, select:focus-visible, [tabindex="0"]:focus-visible {
+        outline: 2px solid #38bdf8 !important;
+        outline-offset: 2px !important;
+    }
+
+    /* 4. Top Header Bar (Slate Surface #0f172a) */
     .terminal-header {
-        background: linear-gradient(90deg, #0d1527 0%, #111c35 100%);
+        background: #0f172a;
         border: 1px solid #1e293b;
-        border-radius: 8px;
-        padding: 12px 18px;
-        margin-bottom: 16px;
+        border-radius: 10px;
+        padding: 14px 22px;
+        margin-bottom: 14px;
         display: flex;
         justify-content: space-between;
         align-items: center;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
     }
     
-    /* KPI Metric Cards */
+    /* 5. Metric Cards & Strategy Containers */
     .metric-card {
-        background: #0d1424;
+        background: #0f172a;
         border: 1px solid #1e293b;
-        border-radius: 8px;
-        padding: 12px 16px;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+        border-radius: 10px;
+        padding: 16px 20px;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.25);
     }
     .metric-title {
-        font-size: 0.72rem;
+        font-size: 0.75rem;
         font-weight: 600;
         text-transform: uppercase;
-        letter-spacing: 0.05em;
+        letter-spacing: 0.06em;
         color: #94a3b8;
-        margin-bottom: 4px;
+        margin-bottom: 5px;
     }
     .metric-value {
-        font-size: 1.35rem;
+        font-size: 1.4rem;
         font-weight: 700;
         font-family: 'JetBrains Mono', 'Roboto Mono', monospace;
         color: #f8fafc;
     }
     .metric-sub {
-        font-size: 0.72rem;
+        font-size: 0.75rem;
         color: #64748b;
-        margin-top: 2px;
+        margin-top: 4px;
+    }
+
+    .strategy-box {
+        background: #0f172a;
+        border: 1px solid #1e293b;
+        border-radius: 10px;
+        padding: 18px;
+        margin-top: 10px;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.25);
     }
     
-    /* CRO Risk Badges */
+    /* 6. Badges (Institutional Semantic Coherence) */
     .cro-badge-approved {
-        background-color: rgba(0, 192, 118, 0.15);
-        color: #00c076;
-        border: 1px solid #00c076;
+        background-color: rgba(16, 185, 129, 0.12);
+        color: #10b981;
+        border: 1px solid rgba(16, 185, 129, 0.4);
         padding: 6px 14px;
         border-radius: 6px;
         font-weight: 700;
@@ -102,28 +159,105 @@ st.markdown("""
         display: inline-block;
     }
     .cro-badge-rejected {
-        background-color: rgba(255, 59, 48, 0.15);
-        color: #ff3b30;
-        border: 1px solid #ff3b30;
+        background-color: rgba(239, 68, 68, 0.12);
+        color: #ef4444;
+        border: 1px solid rgba(239, 68, 68, 0.4);
         padding: 6px 14px;
         border-radius: 6px;
         font-weight: 700;
         letter-spacing: 0.05em;
         display: inline-block;
     }
-    
-    /* Strategy Containers */
-    .strategy-box {
-        background: #0d1527;
-        border: 1px solid #1e293b;
-        border-radius: 8px;
-        padding: 16px;
-        margin-top: 10px;
+    .badge-info {
+        background-color: rgba(56, 189, 248, 0.12);
+        color: #38bdf8;
+        border: 1px solid rgba(56, 189, 248, 0.35);
+        padding: 5px 12px;
+        border-radius: 6px;
+        font-weight: 600;
+        font-size: 0.75rem;
+        display: inline-block;
     }
-    
-    /* Sidebar Styling */
+
+    /* 7. Tab Bar Navigation (Slate with Sky Active Border) */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 6px;
+        background-color: #0f172a;
+        padding: 6px;
+        border-radius: 10px;
+        border: 1px solid #1e293b;
+        margin-bottom: 14px;
+    }
+    .stTabs [data-baseweb="tab"] {
+        height: 42px;
+        color: #94a3b8;
+        font-weight: 600;
+        font-size: 0.88rem;
+        padding: 8px 20px;
+        border-radius: 6px;
+        background: transparent;
+        border: none;
+        transition: all 0.15s ease-in-out;
+    }
+    .stTabs [aria-selected="true"] {
+        color: #f8fafc !important;
+        background-color: #1e293b !important;
+        border: 1px solid #334155 !important;
+        font-weight: 700 !important;
+    }
+
+    /* 8. Buttons (Sky Blue Primary & Slate Secondary) */
+    .stButton > button[kind="primary"],
+    button[data-testid="baseButton-primary"] {
+        background: #0284c7 !important;
+        color: #ffffff !important;
+        font-weight: 700 !important;
+        border: none !important;
+        border-radius: 8px !important;
+        box-shadow: 0 0 14px rgba(2, 132, 199, 0.25) !important;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        min-height: 40px !important;
+    }
+    .stButton > button[kind="primary"]:hover,
+    button[data-testid="baseButton-primary"]:hover {
+        background: #0369a1 !important;
+        box-shadow: 0 0 20px rgba(56, 189, 248, 0.45) !important;
+        transform: translateY(-1px);
+    }
+    .stButton > button[kind="secondary"],
+    button[data-testid="baseButton-secondary"] {
+        background: #1e293b !important;
+        color: #cbd5e1 !important;
+        border: 1px solid #334155 !important;
+        border-radius: 8px !important;
+        font-weight: 600 !important;
+        transition: all 0.2s ease !important;
+        min-height: 40px !important;
+    }
+    .stButton > button[kind="secondary"]:hover,
+    button[data-testid="baseButton-secondary"]:hover {
+        background: #334155 !important;
+        color: #ffffff !important;
+        border-color: #38bdf8 !important;
+    }
+
+    /* 9. Form Elements (Select, Input, Number) */
+    div[data-baseweb="select"] > div,
+    div[data-baseweb="input"] > div,
+    div[data-baseweb="base-input"] {
+        background-color: #090d16 !important;
+        border: 1px solid #1e293b !important;
+        border-radius: 8px !important;
+        color: #f8fafc !important;
+    }
+    div[data-baseweb="select"] > div:hover,
+    div[data-baseweb="input"] > div:hover {
+        border-color: #38bdf8 !important;
+    }
+
+    /* 10. Sidebar Background */
     section[data-testid="stSidebar"] {
-        background-color: #0a0f1d;
+        background-color: #0b1120;
         border-right: 1px solid #1e293b;
     }
 </style>
@@ -131,11 +265,11 @@ st.markdown("""
 
 
 # ==============================================================================
-# 2. DATA LOADERS & SNOWFLAKE INTEGRATION
+# 2. DATA LOADERS & MULTI-TIER CACHING ENGINE
 # ==============================================================================
-@st.cache_data(ttl=20)
+@st.cache_data(ttl=60, show_spinner=False)
 def load_candles_from_snowflake(market: str, ticker: str, timeframe: str, limit: int = 2016) -> pd.DataFrame:
-    """Fetch normalized historical candles from SILVER_CLEAN.MARKET_CANDLES in Snowflake."""
+    """Fetch normalized historical candles from SILVER_CLEAN.MARKET_CANDLES with 60s cache."""
     sql = f"""
     SELECT 
         TIMESTAMP_UTC,
@@ -175,9 +309,43 @@ def load_candles_from_snowflake(market: str, ticker: str, timeframe: str, limit:
             conn.close()
 
 
+@st.cache_data(ttl=60, show_spinner=False)
 def load_gold_state(ticker: str, timeframe: str, market: str) -> Dict[str, Any]:
-    """Retrieve the precomputed institutional quant state from GOLD_QUANT_RAG."""
+    """Retrieve the precomputed institutional quant state from GOLD_QUANT_RAG with 60s cache."""
     return get_gold_market_state(ticker=ticker, timeframe=timeframe, market=market)
+
+
+@st.cache_data(ttl=120, show_spinner=False)
+def cached_generate_trade_plan(ticker: str, market: str, timeframe: str, account_equity: float):
+    """Generate trade plan with 120s cache to avoid repeating Cortex Search and vector analogies."""
+    return generate_trade_plan(
+        ticker=ticker,
+        market=market,
+        timeframe=timeframe,
+        account_equity=account_equity
+    )
+
+
+@st.cache_data(ttl=180, show_spinner=False)
+def cached_query_gemini_agent(
+    user_query: str,
+    ticker: str,
+    market: str,
+    timeframe: str,
+    regime: str,
+    last_price_rounded: float,
+    api_key_override: Optional[str] = None
+) -> Dict[str, Any]:
+    """Cache deterministic and quick-prompt AI responses for 180s."""
+    quant_state = load_gold_state(ticker=ticker, timeframe=timeframe, market=market)
+    return query_gemini_agent(
+        user_query=user_query,
+        ticker=ticker,
+        market=market,
+        timeframe=timeframe,
+        quant_state=quant_state,
+        api_key_override=api_key_override
+    )
 
 
 # ==============================================================================
@@ -198,9 +366,9 @@ def render_tradingview_chart_html(
     """Generate high-precision interactive financial chart using official TradingView Lightweight Charts (HTML5 Canvas)."""
     if df.empty:
         return """
-        <div style="background-color: #080c14; color: #94a3b8; padding: 50px; text-align: center; font-family: -apple-system, sans-serif; border: 1px solid #1e293b; border-radius: 8px;">
+        <div style="background-color: #090d16; color: #94a3b8; padding: 50px; text-align: center; font-family: -apple-system, sans-serif; border: 1px solid #1e293b; border-radius: 8px;">
             <h3 style="color: #38bdf8; margin-bottom: 8px;">Sin velas registradas para este activo</h3>
-            <p>Usa el botón de sincronización en la barra lateral para descargar datos de Snowflake.</p>
+            <p>Usa el botón de sincronización directa en la barra lateral para descargar datos de Snowflake.</p>
         </div>
         """
 
@@ -226,7 +394,7 @@ def render_tradingview_chart_html(
             volumes.append({
                 "time": ts,
                 "value": v,
-                "color": "rgba(0, 192, 118, 0.45)" if c >= o else "rgba(255, 59, 48, 0.45)"
+                "color": "rgba(16, 185, 129, 0.45)" if c >= o else "rgba(239, 68, 68, 0.45)"
             })
         except Exception:
             continue
@@ -278,7 +446,7 @@ def render_tradingview_chart_html(
                 user-select: none;
             }}
             body {{
-                background-color: #080c14;
+                background-color: #090d16;
                 color: #e2e8f0;
                 font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
                 overflow: hidden;
@@ -289,7 +457,7 @@ def render_tradingview_chart_html(
                 position: relative;
                 width: 100%;
                 height: 100%;
-                background: #080c14;
+                background: #090d16;
                 border: 1px solid #1e293b;
                 border-radius: 8px;
             }}
@@ -311,10 +479,10 @@ def render_tradingview_chart_html(
             .range-group {{
                 display: flex;
                 gap: 2px;
-                background: rgba(13, 21, 39, 0.9);
+                background: rgba(15, 23, 42, 0.95);
                 border: 1px solid #1e293b;
                 border-radius: 6px;
-                padding: 2px 4px;
+                padding: 3px 5px;
             }}
             .range-btn {{
                 background: none;
@@ -322,7 +490,7 @@ def render_tradingview_chart_html(
                 color: #94a3b8;
                 font-size: 11px;
                 font-weight: 600;
-                padding: 3px 8px;
+                padding: 4px 10px;
                 border-radius: 4px;
                 cursor: pointer;
                 transition: all 0.15s ease;
@@ -332,18 +500,18 @@ def render_tradingview_chart_html(
                 color: #f8fafc;
             }}
             .range-btn.active {{
-                background: #00c076;
-                color: #080c14;
+                background: #0284c7;
+                color: #ffffff;
                 font-weight: 700;
             }}
             .hud-card {{
                 display: flex;
                 align-items: center;
                 gap: 8px;
-                background: rgba(13, 21, 39, 0.9);
+                background: rgba(15, 23, 42, 0.95);
                 border: 1px solid #1e293b;
                 border-radius: 6px;
-                padding: 4px 10px;
+                padding: 5px 12px;
                 font-family: 'JetBrains Mono', 'Roboto Mono', monospace;
                 font-size: 11px;
                 color: #94a3b8;
@@ -366,8 +534,8 @@ def render_tradingview_chart_html(
                     <button class="range-btn" onclick="selectHorizon('6h', this)">6H</button>
                     <button class="range-btn" onclick="selectHorizon('1d', this)">1D</button>
                     <button class="range-btn" onclick="selectHorizon('3d', this)">3D</button>
-                    <button class="range-btn active" onclick="selectHorizon('all', this)">7D (Todo)</button>
-                    <button class="range-btn" onclick="resetScale()" style="color: #38bdf8;">⟲ Reset</button>
+                    <button class="range-btn active" onclick="selectHorizon('all', this)">7D</button>
+                    <button class="range-btn" onclick="resetScale()" style="color: #38bdf8;">Reset Escala</button>
                 </div>
                 <div class="hud-card">
                     <span class="hud-badge">{ticker} • {timeframe}</span>
@@ -395,14 +563,14 @@ def render_tradingview_chart_html(
                 width: container.clientWidth,
                 height: container.clientHeight,
                 layout: {{
-                    background: {{ type: 'solid', color: '#080c14' }},
+                    background: {{ type: 'solid', color: '#090d16' }},
                     textColor: '#94a3b8',
                     fontSize: 11,
                     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
                 }},
                 grid: {{
-                    vertLines: {{ color: 'rgba(30, 41, 59, 0.4)' }},
-                    horzLines: {{ color: 'rgba(30, 41, 59, 0.4)' }}
+                    vertLines: {{ color: 'rgba(30, 41, 59, 0.45)' }},
+                    horzLines: {{ color: 'rgba(30, 41, 59, 0.45)' }}
                 }},
                 crosshair: {{
                     mode: LightweightCharts.CrosshairMode.Normal,
@@ -442,19 +610,19 @@ def render_tradingview_chart_html(
                     vertTouchDrag: true
                 }},
                 handleScale: {{
-                    axisPressedMouseMove: true, // Drag price axis vertically to stretch!
+                    axisPressedMouseMove: true,
                     mouseWheel: true,
                     pinch: true
                 }}
             }});
 
-            // 2. Candlestick Series (Pixel-Perfect)
+            // 2. Candlestick Series (Emerald & Red Standard)
             const candleSeries = chart.addCandlestickSeries({{
-                upColor: '#00c076',
-                downColor: '#ff3b30',
+                upColor: '#10b981',
+                downColor: '#ef4444',
                 borderVisible: false,
-                wickUpColor: '#00c076',
-                wickDownColor: '#ff3b30',
+                wickUpColor: '#10b981',
+                wickDownColor: '#ef4444',
                 priceFormat: {{
                     type: 'price',
                     precision: {precision},
@@ -463,7 +631,7 @@ def render_tradingview_chart_html(
             }});
             candleSeries.setData(candles);
 
-            // 3. Volume Overlay (Bottom 18%)
+            // 3. Volume Overlay
             if ({str(show_volume).lower()}) {{
                 const volumeSeries = chart.addHistogramSeries({{
                     priceFormat: {{ type: 'volume' }},
@@ -482,7 +650,7 @@ def render_tradingview_chart_html(
             if ({str(show_vwap).lower()} && vwap !== null) {{
                 candleSeries.createPriceLine({{
                     price: vwap,
-                    color: '#a855f7',
+                    color: '#818cf8',
                     lineWidth: 2,
                     lineStyle: LightweightCharts.LineStyle.Solid,
                     axisLabelVisible: true,
@@ -493,7 +661,7 @@ def render_tradingview_chart_html(
             if ({str(show_poc).lower()} && poc !== null) {{
                 candleSeries.createPriceLine({{
                     price: poc,
-                    color: '#fbbf24',
+                    color: '#f59e0b',
                     lineWidth: 2,
                     lineStyle: LightweightCharts.LineStyle.Solid,
                     axisLabelVisible: true,
@@ -504,26 +672,26 @@ def render_tradingview_chart_html(
             if ({str(show_bands).lower()} && u2 !== null && l2 !== null) {{
                 candleSeries.createPriceLine({{
                     price: u2,
-                    color: '#38bdf8',
+                    color: 'rgba(129, 140, 248, 0.5)',
                     lineWidth: 1,
                     lineStyle: LightweightCharts.LineStyle.Dotted,
                     axisLabelVisible: true,
-                    title: '+2σ VWAP'
+                    title: '+2s VWAP'
                 }});
                 candleSeries.createPriceLine({{
                     price: l2,
-                    color: '#38bdf8',
+                    color: 'rgba(129, 140, 248, 0.5)',
                     lineWidth: 1,
                     lineStyle: LightweightCharts.LineStyle.Dotted,
                     axisLabelVisible: true,
-                    title: '-2σ VWAP'
+                    title: '-2s VWAP'
                 }});
             }}
 
             if ({str(show_val_vah).lower()} && vah !== null && val !== null) {{
                 candleSeries.createPriceLine({{
                     price: vah,
-                    color: '#0ea5e9',
+                    color: '#06b6d4',
                     lineWidth: 1,
                     lineStyle: LightweightCharts.LineStyle.Dashed,
                     axisLabelVisible: true,
@@ -531,7 +699,7 @@ def render_tradingview_chart_html(
                 }});
                 candleSeries.createPriceLine({{
                     price: val,
-                    color: '#0ea5e9',
+                    color: '#06b6d4',
                     lineWidth: 1,
                     lineStyle: LightweightCharts.LineStyle.Dashed,
                     axisLabelVisible: true,
@@ -544,7 +712,7 @@ def render_tradingview_chart_html(
             function renderHUD(bar) {{
                 if (!bar) return;
                 const pct = (((bar.close - bar.open) / bar.open) * 100).toFixed(2);
-                const col = pct >= 0 ? '#00c076' : '#ff3b30';
+                const col = pct >= 0 ? '#10b981' : '#ef4444';
                 const sign = pct >= 0 ? '+' : '';
                 ohlcText.innerHTML = `O: <b class="hud-val">${{bar.open.toFixed({precision})}}</b> ` +
                                     `H: <b class="hud-val">${{bar.high.toFixed({precision})}}</b> ` +
@@ -591,7 +759,6 @@ def render_tradingview_chart_html(
                 chart.priceScale('right').applyOptions({{ autoScale: true }});
             }};
 
-            // Initial view: default to last 120 candles with clear spacing
             if (candles.length > 120) {{
                 const step = candles[1].time - candles[0].time || 300;
                 const last = candles[candles.length - 1].time;
@@ -603,7 +770,6 @@ def render_tradingview_chart_html(
                 chart.timeScale().fitContent();
             }}
 
-            // Resize Observer for 100% responsiveness
             new ResizeObserver(entries => {{
                 if (entries.length && entries[0].contentRect) {{
                     const rect = entries[0].contentRect;
@@ -625,138 +791,123 @@ def main():
     is_live = pipe_state.get("is_running", False)
 
     # Initialize session state variables
-    if "main_view" not in st.session_state:
-        st.session_state["main_view"] = "chart"  # Options: "chart", "committee", "chat"
     if "chat_messages" not in st.session_state:
         st.session_state["chat_messages"] = []
     if "gemini_api_key" not in st.session_state:
         st.session_state["gemini_api_key"] = get_settings().gemini_api_key or ""
 
-    # 1. Header Bar: Plataforma de Análisis de Mercado
+    # 1. Header Bar: Institutional Branding & Status Badges
     st.markdown(f"""
     <div class="terminal-header">
         <div>
-            <span style="font-size: 1.25rem; font-weight: 800; color: #00f2fe; letter-spacing: 0.05em;">Plataforma de Análisis de Mercado</span>
-            <span style="font-size: 0.85rem; color: #94a3b8; margin-left: 10px;">| Trading & Microestructura Institucional</span>
+            <span style="font-size: 1.2rem; font-weight: 800; color: #38bdf8; letter-spacing: 0.05em;">PLATAFORMA DE ANÁLISIS DE MERCADO</span>
+            <span style="font-size: 0.85rem; color: #94a3b8; margin-left: 12px;">Trading Institucional & Microestructura</span>
         </div>
-        <div style="display: flex; gap: 12px; align-items: center;">
-            <span style="font-size: 0.78rem; background: #1e293b; padding: 4px 10px; border-radius: 4px; color: #38bdf8;">
-                ❄️ Snowflake DB: QUANT_INSTITUTIONAL_DB
+        <div style="display: flex; gap: 10px; align-items: center;">
+            <span class="badge-info">
+                SNOWFLAKE: QUANT_INSTITUTIONAL_DB
             </span>
-            <span style="font-size: 0.78rem; background: {'rgba(0, 192, 118, 0.2)' if is_live else 'rgba(255, 59, 48, 0.2)'}; 
-                         color: {'#00c076' if is_live else '#ff3b30'}; padding: 4px 10px; border-radius: 4px; font-weight: 700;">
-                ● {'PIPELINE EN VIVO' if is_live else 'PIPELINE DETENIDO'}
+            <span class="{'cro-badge-approved' if is_live else 'cro-badge-rejected'}" style="font-size: 0.75rem; padding: 5px 12px;">
+                {'● PIPELINE EN VIVO' if is_live else '● PIPELINE DETENIDO'}
             </span>
         </div>
     </div>
     """, unsafe_allow_html=True)
 
-    # 2. View Switcher Bar (Instant full-screen toggle)
-    col_v1, col_v2, col_v3, col_v_back = st.columns([1.5, 1.8, 1.8, 3.2])
-    with col_v1:
-        if st.button("📈 Terminal Gráfica", use_container_width=True, type="primary" if st.session_state["main_view"] == "chart" else "secondary"):
-            st.session_state["main_view"] = "chart"
-            st.rerun()
-    with col_v2:
-        if st.button("🏛️ Comité Agéntico (Full)", use_container_width=True, type="primary" if st.session_state["main_view"] == "committee" else "secondary"):
-            st.session_state["main_view"] = "committee"
-            st.rerun()
-    with col_v3:
-        if st.button("🤖 Asesor Cuantitativo IA", use_container_width=True, type="primary" if st.session_state["main_view"] == "chat" else "secondary"):
-            st.session_state["main_view"] = "chat"
-            st.rerun()
-    with col_v_back:
-        if st.session_state["main_view"] != "chart":
-            if st.button("⬅️ Volver a Pantalla Completa de Gráfico", use_container_width=False):
-                st.session_state["main_view"] = "chart"
-                st.rerun()
-
-    st.markdown("<div style='height: 6px;'></div>", unsafe_allow_html=True)
-
-    # 3. Sidebar Controls
+    # 2. Sidebar Controls
     with st.sidebar:
-        st.markdown("### 📊 Activos del Mercado")
+        st.markdown("""
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #1e293b;">
+            <span style="font-size: 0.95rem; font-weight: 800; color: #ffffff; letter-spacing: 0.04em;">MERCADO & ACTIVOS</span>
+            <span style="font-size: 0.7rem; background: rgba(56, 189, 248, 0.12); color: #38bdf8; padding: 2px 8px; border-radius: 4px; font-weight: 700;">LIVE</span>
+        </div>
+        """, unsafe_allow_html=True)
         
-        # Complete asset registry with all assets visible simultaneously
         ASSET_REGISTRY = {
-            "🪙 BTCUSDT (Bitcoin • Crypto)": ("CRYPTO", "BTCUSDT"),
-            "🪙 ETHUSDT (Ethereum • Crypto)": ("CRYPTO", "ETHUSDT"),
-            "🪙 SOLUSDT (Solana • Crypto)": ("CRYPTO", "SOLUSDT"),
-            "📈 NVDA (Nvidia Corp • Equity)": ("EQUITIES", "NVDA"),
-            "📈 AAPL (Apple Inc • Equity)": ("EQUITIES", "AAPL"),
-            "📈 MSFT (Microsoft • Equity)": ("EQUITIES", "MSFT"),
-            "💱 EURUSD (Euro / Dólar • Forex)": ("FOREX", "EURUSD"),
-            "💱 GBPUSD (Libra / Dólar • Forex)": ("FOREX", "GBPUSD"),
-            "💱 USDJPY (Dólar / Yen • Forex)": ("FOREX", "USDJPY"),
+            "BTC/USDT — Bitcoin (Crypto)": ("CRYPTO", "BTCUSDT"),
+            "ETH/USDT — Ethereum (Crypto)": ("CRYPTO", "ETHUSDT"),
+            "SOL/USDT — Solana (Crypto)": ("CRYPTO", "SOLUSDT"),
+            "NVDA — Nvidia Corp (Equity)": ("EQUITIES", "NVDA"),
+            "AAPL — Apple Inc (Equity)": ("EQUITIES", "AAPL"),
+            "MSFT — Microsoft Corp (Equity)": ("EQUITIES", "MSFT"),
+            "EUR/USD — Euro / Dólar (Forex)": ("FOREX", "EURUSD"),
+            "GBP/USD — Libra / Dólar (Forex)": ("FOREX", "GBPUSD"),
+            "USD/JPY — Dólar / Yen (Forex)": ("FOREX", "USDJPY"),
         }
 
-        selected_asset_label = st.radio(
-            "Activo",
+        selected_asset_label = st.selectbox(
+            "Activo Financiero",
             options=list(ASSET_REGISTRY.keys()),
-            index=0,
-            label_visibility="collapsed"
+            index=0
         )
         market_choice, ticker = ASSET_REGISTRY[selected_asset_label]
 
+        col_tf1, col_tf2 = st.columns([1.4, 1.0])
+        with col_tf1:
+            timeframe = st.selectbox("Temporalidad", options=["5m", "15m", "1h", "1d"], index=0)
+        with col_tf2:
+            days_lookback = st.number_input("Ventana (Días)", min_value=1, max_value=7, value=7, step=1)
+
+        # 1-Click Synchronization & Explicit Cache Purge Controls
+        col_btn1, col_btn2 = st.columns([1.4, 1.0])
+        with col_btn1:
+            if st.button("Sincronizar Activo", use_container_width=True, type="primary"):
+                with st.spinner(f"Sincronizando {ticker} ({timeframe}) con Snowflake..."):
+                    sync_single_asset(market=market_choice, ticker=ticker, timeframe=timeframe, days=days_lookback)
+                    st.cache_data.clear()
+                    clear_gold_tools_cache()
+                    st.success("Datos actualizados correctamente.")
+                    st.rerun()
+        with col_btn2:
+            if st.button("Purgar Caché", use_container_width=True, help="Limpia la memoria caché de consultas y RAG."):
+                st.cache_data.clear()
+                clear_gold_tools_cache()
+                st.toast("Caché purgada con éxito.", icon="✅")
+                st.rerun()
+
         st.markdown("---")
-        st.markdown("### ⏱️ Temporalidad")
-        timeframe = st.select_slider(
-            "Temporalidad (Velas)",
-            options=["5m", "15m", "1h", "1d"],
-            value="5m",
-            label_visibility="collapsed"
-        )
 
-        days_lookback = st.slider("Ventana Histórica (Días)", min_value=1, max_value=7, value=7)
-
-        with st.expander("👁️ Capas de Microestructura", expanded=True):
+        with st.expander("Capas de Microestructura", expanded=True):
             show_vwap = st.checkbox("Línea VWAP de Sesión", value=True)
             show_poc = st.checkbox("Nivel POC (Point of Control)", value=True)
-            show_bands = st.checkbox("Bandas VWAP (±2σ)", value=False)
+            show_bands = st.checkbox("Bandas VWAP (±2s)", value=False)
             show_val_vah = st.checkbox("Áreas de Valor (VAH / VAL)", value=False)
-            show_volume = st.checkbox("Volumen Overlay (Inferior)", value=True)
-            st.caption("💡 *Tip:* Usa rueda del ratón para zoom temporal y arrastra el eje vertical derecho de precios para estirar velas.")
+            show_volume = st.checkbox("Histograma de Volumen", value=True)
 
-        with st.expander("⚡ Pipeline & Sincronización", expanded=False):
+        with st.expander("Control de Pipeline en Vivo", expanded=False):
             col_s1, col_s2 = st.columns(2)
             with col_s1:
-                 if st.button("▶️ Iniciar Live", use_container_width=True):
-                     start_live_daemon(interval_seconds=60, days=days_lookback, timeframes=[timeframe, "1h"])
-                     st.rerun()
+                if st.button("Iniciar Live", use_container_width=True):
+                    start_live_daemon(interval_seconds=60, days=days_lookback, timeframes=[timeframe, "1h"])
+                    st.rerun()
             with col_s2:
-                 if st.button("⏹️ Detener", use_container_width=True):
-                     stop_live_daemon()
-                     st.rerun()
+                if st.button("Detener", use_container_width=True):
+                    stop_live_daemon()
+                    st.rerun()
 
-            if st.button("🔄 Sincronizar Activo Ahora", use_container_width=True):
-                 with st.spinner(f"Descargando {ticker} ({timeframe}) y actualizando Snowflake..."):
-                     sync_single_asset(market=market_choice, ticker=ticker, timeframe=timeframe, days=days_lookback)
-                     st.cache_data.clear()
-                     st.success("¡Datos actualizados!")
-                     st.rerun()
-
-        with st.expander("💼 Gestión de Capital", expanded=False):
+        with st.expander("Gestión de Capital", expanded=False):
             equity = st.number_input("Capital Institucional (USD)", min_value=1000.0, value=100000.0, step=10000.0)
 
-        with st.expander("🔑 Configuración Gemini API", expanded=False):
+        with st.expander("Configuración Gemini API", expanded=False):
             gemini_key_input = st.text_input(
                 "Gemini API Key:",
                 value=st.session_state.get("gemini_api_key", ""),
                 type="password",
                 placeholder="AIzaSy...",
-                help="Ingresa tu clave de Google Gemini para activar el razonamiento con IA. También se detecta automáticamente desde .env."
+                help="Clave API de Google Gemini para habilitar el razonamiento institucional."
             )
             if gemini_key_input != st.session_state.get("gemini_api_key", ""):
                 st.session_state["gemini_api_key"] = gemini_key_input
                 st.success("Clave Gemini actualizada.")
 
-    # 4. Load Candlestick Data & Quant State from Snowflake
+    # 3. Load Candlestick Data & Quant State from Snowflake (Multi-tier Cache)
     df_candles = load_candles_from_snowflake(market=market_choice, ticker=ticker, timeframe=timeframe, limit=2016)
     
     if df_candles.empty:
         with st.spinner(f"Sincronizando {market_choice}:{ticker} ({timeframe}) directamente en Snowflake..."):
             sync_single_asset(market=market_choice, ticker=ticker, timeframe=timeframe, days=days_lookback)
             st.cache_data.clear()
+            clear_gold_tools_cache()
             df_candles = load_candles_from_snowflake(market=market_choice, ticker=ticker, timeframe=timeframe, limit=2016)
 
     quant_state = load_gold_state(ticker=ticker, timeframe=timeframe, market=market_choice)
@@ -765,71 +916,19 @@ def main():
     regime = reg_data.get("regime", "TRENDING_MOMENTUM")
     hurst = reg_data.get("hurst", 0.55)
 
-    # 5. Sidebar Actions: Comité Agéntico & Consultas Rápidas
-    with st.sidebar:
-        st.markdown("---")
-        with st.expander("🤖 Comité Agéntico & Control CRO", expanded=False):
-            plan_cache_key = f"plan_{ticker}_{timeframe}_{equity}"
-            if st.button("🧠 Ejecutar Análisis a Pantalla Completa", type="primary", use_container_width=True):
-                with st.spinner(f"Analizando {ticker} ({timeframe}) con Comité Agéntico y CRO..."):
-                    plan = generate_trade_plan(
-                        ticker=ticker,
-                        market=market_choice,
-                        timeframe=timeframe,
-                        account_equity=equity
-                    )
-                    st.session_state[plan_cache_key] = plan
-                    st.session_state["main_view"] = "committee"
-                    st.rerun()
-
-            plan = st.session_state.get(plan_cache_key)
-            if plan:
-                verdict = plan.intraday_execution.risk_officer_verdict
-                is_approved = (verdict == "APPROVED")
-                st.markdown(f"""
-                <div class="strategy-box" style="padding: 10px; margin-top: 6px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                        <span style="font-size: 0.85rem; font-weight: 700;">Veredicto CRO:</span>
-                        <span class="{'cro-badge-approved' if is_approved else 'cro-badge-rejected'}" style="font-size: 0.72rem; padding: 2px 8px;">{verdict}</span>
-                    </div>
-                    <div style="font-size: 0.78rem; color: #cbd5e1; line-height: 1.4;">
-                        <strong>R:R:</strong> {plan.intraday_execution.reward_to_risk_ratio:.2f} (Mín: 2.0)<br>
-                        <strong>Kelly (1/4):</strong> {plan.intraday_execution.fractional_kelly_fraction * 100:.1f}% capital<br>
-                        <strong>Riesgo Máx:</strong> ${plan.intraday_execution.suggested_risk_capital_usd:,.2f} USD
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-                if st.button("🔍 Ver Informe Detallado", use_container_width=True):
-                    st.session_state["main_view"] = "committee"
-                    st.rerun()
-            else:
-                st.caption("Pulsa el botón para ejecutar análisis multi-agente en pantalla completa.")
-
-        with st.expander("💬 Consultas al Agente Cuantitativo", expanded=False):
-            sidebar_query = st.text_input("Pregunta al Agente:", placeholder="Ej: Proponme una inversión...", key="sidebar_agent_input")
-            if st.button("Consultar en Pantalla Completa", use_container_width=True, key="sidebar_agent_btn"):
-                if sidebar_query:
-                    # Execute agent query
-                    with st.spinner("Procesando consulta con Gemini y Snowflake..."):
-                        res = query_gemini_agent(
-                            user_query=sidebar_query,
-                            ticker=ticker,
-                            market=market_choice,
-                            timeframe=timeframe,
-                            quant_state=quant_state,
-                            api_key_override=st.session_state.get("gemini_api_key")
-                        )
-                    st.session_state["chat_messages"].append({"role": "user", "content": sidebar_query, "chart": None})
-                    st.session_state["chat_messages"].append({"role": "assistant", "content": res["text"], "chart": res.get("chart")})
-                    st.session_state["main_view"] = "chat"
-                    st.rerun()
-
     # ==============================================================================
-    # 6. DYNAMIC MAIN VIEW ROUTER
+    # 4. TAB NAVIGATION & MAIN VIEWS (No unnecessary reruns, 100% accessible)
     # ==============================================================================
+    tab_chart, tab_committee, tab_chat = st.tabs([
+        "Terminal Gráfica",
+        "Comité de Riesgo (CRO)",
+        "Asesor Cuantitativo"
+    ])
 
-    # VIEW A: TRADINGVIEW CANDLESTICK CHART (60 FPS CANVAS)
-    if st.session_state["main_view"] == "chart":
+    # ------------------------------------------------------------------------------
+    # TAB 1: TRADINGVIEW CANDLESTICK CHART
+    # ------------------------------------------------------------------------------
+    with tab_chart:
         chart_html = render_tradingview_chart_html(
             df=df_candles,
             quant_state=quant_state,
@@ -844,36 +943,39 @@ def main():
         )
         components.html(chart_html, height=740)
 
-    # VIEW B: FULL-SCREEN COMITÉ AGÉNTICO & VEREDICTO CRO
-    elif st.session_state["main_view"] == "committee":
-        plan_cache_key = f"plan_{ticker}_{timeframe}_{equity}"
-        plan = st.session_state.get(plan_cache_key)
+    # ------------------------------------------------------------------------------
+    # TAB 2: COMITÉ AGÉNTICO & VEREDICTO CRO (CACHED ANALYSIS)
+    # ------------------------------------------------------------------------------
+    with tab_committee:
+        col_head, col_btn = st.columns([4, 1.2])
+        with col_btn:
+            if st.button("Actualizar Análisis", use_container_width=True, type="primary", key="btn_refresh_plan"):
+                st.cache_data.clear()
+                clear_gold_tools_cache()
+                st.rerun()
 
-        if not plan:
-            with st.spinner(f"Analizando {ticker} ({timeframe}) con el Comité Agéntico y evaluando con el CRO..."):
-                plan = generate_trade_plan(
-                    ticker=ticker,
-                    market=market_choice,
-                    timeframe=timeframe,
-                    account_equity=equity
-                )
-                st.session_state[plan_cache_key] = plan
+        plan = cached_generate_trade_plan(
+            ticker=ticker,
+            market=market_choice,
+            timeframe=timeframe,
+            account_equity=equity
+        )
 
         verdict = plan.intraday_execution.risk_officer_verdict
         is_approved = (verdict == "APPROVED")
 
         # Top Executive CRO Banner
         st.markdown(f"""
-        <div style="background: linear-gradient(90deg, #0d1527 0%, #152244 100%); border: 1px solid #1e293b; border-radius: 8px; padding: 18px 22px; margin-bottom: 16px;">
+        <div style="background: #0f172a; border: 1px solid #1e293b; border-radius: 10px; padding: 18px 22px; margin-bottom: 16px;">
             <div style="display: flex; justify-content: space-between; align-items: center;">
                 <div>
-                    <h2 style="margin: 0; color: #f8fafc; font-size: 1.4rem;">🏛️ Comité Agéntico de Inversión & Control de Riesgo</h2>
+                    <h2 style="margin: 0; color: #f8fafc; font-size: 1.35rem; font-weight: 700;">Comité Agéntico de Inversión & Control de Riesgo</h2>
                     <p style="margin: 4px 0 0 0; color: #94a3b8; font-size: 0.88rem;">
                         Evaluación para <strong>{ticker}</strong> ({market_choice} • {timeframe}) | Filosofía de Preservación de Capital
                     </p>
                 </div>
                 <div>
-                    <span class="{'cro-badge-approved' if is_approved else 'cro-badge-rejected'}" style="font-size: 1.1rem; padding: 8px 20px;">
+                    <span class="{'cro-badge-approved' if is_approved else 'cro-badge-rejected'}" style="font-size: 1.05rem; padding: 8px 18px;">
                         VEREDICTO CRO: {verdict}
                     </span>
                 </div>
@@ -881,16 +983,16 @@ def main():
         </div>
         """, unsafe_allow_html=True)
 
-        # 4 Key Metrics Bar
+        # 4 Key Metrics Bar (Consistent Slate & Sky Blue System)
         mk1, mk2, mk3, mk4 = st.columns(4)
         with mk1:
             st.markdown(f"""
             <div class="metric-card">
                 <div class="metric-title">Ratio R:R Proyectado</div>
-                <div class="metric-value" style="color: {'#00c076' if plan.intraday_execution.reward_to_risk_ratio >= 2.0 else '#ff3b30'};">
+                <div class="metric-value" style="color: {'#10b981' if plan.intraday_execution.reward_to_risk_ratio >= 2.0 else '#ef4444'};">
                     {plan.intraday_execution.reward_to_risk_ratio:.2f}
                 </div>
-                <div class="metric-sub">Umbral Obligatorio CRO: ≥ 2.00</div>
+                <div class="metric-sub">Umbral Obligatorio CRO: >= 2.00</div>
             </div>
             """, unsafe_allow_html=True)
 
@@ -920,7 +1022,7 @@ def main():
             st.markdown(f"""
             <div class="metric-card">
                 <div class="metric-title">Régimen & Microestructura</div>
-                <div class="metric-value" style="font-size: 1.15rem; color: #fbbf24;">
+                <div class="metric-value" style="font-size: 1.15rem; color: #f59e0b;">
                     {plan.market_regime}
                 </div>
                 <div class="metric-sub">Hurst: {plan.hurst_exponent:.3f} | ATR: {plan.atr:,.4f}</div>
@@ -929,8 +1031,8 @@ def main():
 
         if not is_approved and plan.intraday_execution.risk_rejection_reason:
             st.markdown(f"""
-            <div style="background: rgba(255, 59, 48, 0.12); border: 1px solid #ff3b30; border-radius: 6px; padding: 12px 16px; margin: 14px 0; color: #fca5a5;">
-                <strong>🛑 Veto del Chief Risk Officer (CRO):</strong> {plan.intraday_execution.risk_rejection_reason}
+            <div style="background: rgba(239, 68, 68, 0.12); border: 1px solid #ef4444; border-radius: 6px; padding: 12px 16px; margin: 14px 0; color: #fca5a5;">
+                <strong>Veto del Chief Risk Officer (CRO):</strong> {plan.intraday_execution.risk_rejection_reason}
             </div>
             """, unsafe_allow_html=True)
 
@@ -938,18 +1040,18 @@ def main():
         col_st1, col_st2 = st.columns(2)
         with col_st1:
             s1 = plan.intraday_execution
-            act_col = "#00c076" if s1.action == "BUY" else "#ff3b30" if s1.action == "SELL" else "#94a3b8"
+            act_col = "#10b981" if s1.action == "BUY" else "#ef4444" if s1.action == "SELL" else "#94a3b8"
             st.markdown(f"""
             <div class="strategy-box">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <span style="font-size: 1.05rem; font-weight: 700; color: #38bdf8;">⚡ Estrategia 1: Ejecución Intradía ({timeframe})</span>
+                    <span style="font-size: 1.05rem; font-weight: 700; color: #38bdf8;">Estrategia 1: Ejecución Intradía ({timeframe})</span>
                     <span style="font-size: 1.25rem; font-weight: 800; color: {act_col};">{s1.action}</span>
                 </div>
                 <hr style="border-color: #1e293b; margin: 10px 0;">
                 <table style="width: 100%; font-size: 0.92rem; color: #cbd5e1; border-collapse: separate; border-spacing: 0 6px;">
                     <tr><td><strong>Precio Entrada:</strong></td><td align="right"><b>{s1.entry_price:,.4f}</b></td></tr>
-                    <tr><td><strong>Stop Loss (ATR):</strong></td><td align="right" style="color: #ff3b30;"><b>{s1.stop_loss_price:,.4f}</b></td></tr>
-                    <tr><td><strong>Take Profit 1 / 2:</strong></td><td align="right" style="color: #00c076;"><b>{s1.take_profit_levels}</b></td></tr>
+                    <tr><td><strong>Stop Loss (ATR):</strong></td><td align="right" style="color: #ef4444;"><b>{s1.stop_loss_price:,.4f}</b></td></tr>
+                    <tr><td><strong>Take Profit 1 / 2:</strong></td><td align="right" style="color: #10b981;"><b>{s1.take_profit_levels}</b></td></tr>
                     <tr><td><strong>Ratio R:R:</strong></td><td align="right"><b>{s1.reward_to_risk_ratio:.2f}</b></td></tr>
                     <tr><td><strong>Regla Playbook:</strong></td><td align="right" style="color: #38bdf8;"><em>{s1.matched_playbook_rule}</em></td></tr>
                 </table>
@@ -961,20 +1063,20 @@ def main():
 
         with col_st2:
             s2 = plan.holder_swing_allocation
-            act_col2 = "#00c076" if s2.action == "BUY" else "#ff3b30" if s2.action == "SELL" else "#94a3b8"
+            act_col2 = "#10b981" if s2.action == "BUY" else "#ef4444" if s2.action == "SELL" else "#94a3b8"
             st.markdown(f"""
             <div class="strategy-box">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <span style="font-size: 1.05rem; font-weight: 700; color: #a855f7;">🌐 Estrategia 2: Asignación Swing / Macro</span>
+                    <span style="font-size: 1.05rem; font-weight: 700; color: #818cf8;">Estrategia 2: Asignación Swing / Macro</span>
                     <span style="font-size: 1.25rem; font-weight: 800; color: {act_col2};">{s2.action}</span>
                 </div>
                 <hr style="border-color: #1e293b; margin: 10px 0;">
                 <table style="width: 100%; font-size: 0.92rem; color: #cbd5e1; border-collapse: separate; border-spacing: 0 6px;">
                     <tr><td><strong>Precio Acumulación:</strong></td><td align="right"><b>{s2.entry_price:,.4f}</b></td></tr>
-                    <tr><td><strong>Stop Estructural:</strong></td><td align="right" style="color: #ff3b30;"><b>{s2.stop_loss_price:,.4f}</b></td></tr>
-                    <tr><td><strong>Target Plurianual:</strong></td><td align="right" style="color: #00c076;"><b>{s2.take_profit_levels}</b></td></tr>
+                    <tr><td><strong>Stop Estructural:</strong></td><td align="right" style="color: #ef4444;"><b>{s2.stop_loss_price:,.4f}</b></td></tr>
+                    <tr><td><strong>Target Plurianual:</strong></td><td align="right" style="color: #10b981;"><b>{s2.take_profit_levels}</b></td></tr>
                     <tr><td><strong>R:R Proyectado:</strong></td><td align="right"><b>{s2.reward_to_risk_ratio:.2f}</b></td></tr>
-                    <tr><td><strong>Memoria Episódica:</strong></td><td align="right" style="color: #a855f7;"><em>Cortex Vector RAG</em></td></tr>
+                    <tr><td><strong>Memoria Episódica:</strong></td><td align="right" style="color: #818cf8;"><em>Cortex Vector RAG</em></td></tr>
                 </table>
                 <p style="font-size: 0.85rem; color: #94a3b8; margin-top: 10px; line-height: 1.4;">
                     <strong>Analogía Histórica:</strong> {plan.historical_analogy_summary}
@@ -982,7 +1084,6 @@ def main():
             </div>
             """, unsafe_allow_html=True)
 
-        # Visual Explanatory Chart of the Strategy Decision
         st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
         chart_comm = generate_investment_proposal_chart(
             ticker=ticker,
@@ -997,86 +1098,80 @@ def main():
         )
         st.plotly_chart(chart_comm, use_container_width=True)
 
-    # VIEW C: FULL-SCREEN CHAT ASESOR CUANTITATIVO IA (GEMINI 2.5)
-    elif st.session_state["main_view"] == "chat":
-        # Welcome message on fresh conversation
+    # ------------------------------------------------------------------------------
+    # TAB 3: ASESOR CUANTITATIVO IA (GEMINI - CACHED QUERY PIPELINE)
+    # ------------------------------------------------------------------------------
+    with tab_chat:
         if not st.session_state["chat_messages"]:
             welcome_msg = (
-                f"¡Hola! Soy tu **Asesor Cuantitativo & de Negocio**, conectado en tiempo real a la capa GOLD "
-                f"de Snowflake y potenciado por la inteligencia de **Google Gemini 2.5**.\n\n"
-                f"Actualmente monitoreando **{ticker}** ({market_choice} • {timeframe}) con último precio en **{last_price:,.4f}** "
-                f"en régimen **{regime}** (Hurst: `{hurst:.3f}`).\n\n"
-                f"Estoy listo para:\n"
-                f"- 💡 **Proponerte una inversión estructurada** con niveles de Entrada, Stop Loss por ATR, Take Profit y ratio R:R $\\ge 2.0$.\n"
-                f"- 📊 **Explicarte con gráficos interactivos** por qué se toma cada decisión técnica.\n"
-                f"- ⚖️ **Responder preguntas sobre nuestro modelo de negocio**, gestión del riesgo por 1/4 Kelly y veto del CRO."
+                f"Asesor Cuantitativo conectado a la capa GOLD de Snowflake y Google Gemini.\n\n"
+                f"Activo monitoreado: **{ticker}** ({market_choice} • {timeframe}) | Último precio: **{last_price:,.4f}** "
+                f"| Régimen: **{regime}** (Hurst: `{hurst:.3f}`).\n\n"
+                f"Capacidades disponibles:\n"
+                f"- **Propuesta estructurada de inversión**: Niveles de Entrada, Stop Loss por ATR, Take Profit y ratio R:R >= 2.0.\n"
+                f"- **Explicación técnica con gráficos**: Desglose de VWAP, POC y perfiles de liquidez.\n"
+                f"- **Evaluación del modelo de riesgo**: Gestión de capital por 1/4 Kelly y política de preservación de capital del CRO."
             )
             st.session_state["chat_messages"].append({"role": "assistant", "content": welcome_msg, "chart": None})
 
-        # Top Agent Status Banner
         st.markdown(f"""
-        <div style="background: linear-gradient(90deg, #0d1527 0%, #152244 100%); border: 1px solid #1e293b; border-radius: 8px; padding: 14px 18px; margin-bottom: 12px;">
+        <div style="background: #0f172a; border: 1px solid #1e293b; border-radius: 10px; padding: 14px 18px; margin-bottom: 12px;">
             <div style="display: flex; justify-content: space-between; align-items: center;">
                 <div>
-                    <h3 style="margin: 0; color: #f8fafc; font-size: 1.25rem;">🤖 Asesor Cuantitativo & de Negocio (Gemini 2.5)</h3>
+                    <h3 style="margin: 0; color: #f8fafc; font-size: 1.15rem; font-weight: 700;">Asesor Cuantitativo & de Negocio (Gemini)</h3>
                     <p style="margin: 3px 0 0 0; color: #94a3b8; font-size: 0.85rem;">
                         Activo en Foco: <strong style="color: #38bdf8;">{ticker}</strong> ({market_choice} • {timeframe}) | 
-                        Precio: <strong>{last_price:,.4f}</strong> | Régimen: <strong style="color: #fbbf24;">{regime}</strong>
+                        Precio: <strong>{last_price:,.4f}</strong> | Régimen: <strong style="color: #f59e0b;">{regime}</strong>
                     </p>
                 </div>
                 <div>
-                    <span style="font-size: 0.78rem; background: rgba(0, 192, 118, 0.15); border: 1px solid #00c076; color: #00c076; padding: 4px 10px; border-radius: 4px; font-weight: 600;">
-                        ● AGENTE ACTIVO & BLINDADO
+                    <span class="cro-badge-approved" style="font-size: 0.75rem; padding: 4px 12px;">
+                        AGENTE ACTIVO
                     </span>
                 </div>
             </div>
         </div>
         """, unsafe_allow_html=True)
 
-        # Quick Prompt Suggestion Pills
-        q_col1, q_col2, q_col3, q_col4 = st.columns([2.3, 2.3, 2.3, 1.1])
+        # Quick Prompt Buttons
+        q_col1, q_col2, q_col3, q_col4 = st.columns([2.2, 2.2, 2.2, 1.2])
         trigger_prompt = None
         with q_col1:
-            if st.button(f"💡 Proponer Inversión en {ticker}", use_container_width=True):
+            if st.button(f"Proponer Inversión en {ticker}", use_container_width=True, key="btn_qp_prop"):
                 trigger_prompt = f"Proponme una inversión estructurada y fundamentada para {ticker} ({timeframe}) evaluando VWAP, POC, ATR y el ratio R:R."
         with q_col2:
-            if st.button("⚖️ Explicar Modelo y CRO", use_container_width=True):
+            if st.button("Explicar Modelo y CRO", use_container_width=True, key="btn_qp_model"):
                 trigger_prompt = "¿Cómo funciona el modelo de negocio institucional de la plataforma y por qué el CRO aplica veto obligatorio?"
         with q_col3:
-            if st.button("📊 Analizar Microestructura", use_container_width=True):
+            if st.button("Analizar Microestructura", use_container_width=True, key="btn_qp_micro"):
                 trigger_prompt = f"Analiza en detalle la microestructura actual de {ticker}: ¿Dónde está el POC, el VWAP y qué indica el CVD?"
         with q_col4:
-            if st.button("🗑️ Limpiar", use_container_width=True):
+            if st.button("Limpiar Historial", use_container_width=True, key="btn_qp_clear"):
                 st.session_state["chat_messages"] = []
                 st.rerun()
 
         # Render Conversation History
         for msg in st.session_state["chat_messages"]:
-            with st.chat_message(msg["role"], avatar="🧑‍💻" if msg["role"] == "user" else "🤖"):
+            with st.chat_message(msg["role"]):
                 st.markdown(msg["content"])
                 if msg.get("chart") is not None:
                     st.plotly_chart(msg["chart"], use_container_width=True)
 
-        # Bottom Input Box
         user_input = st.chat_input("Escribe tu consulta sobre inversión, microestructura o modelo de negocio...")
         active_query = trigger_prompt or user_input
 
         if active_query:
-            # 1. Add user message
             st.session_state["chat_messages"].append({"role": "user", "content": active_query, "chart": None})
-            
-            # 2. Query Gemini Agent with Security & Feature Store Context
-            with st.spinner("El Agente Cuantitativo está analizando el Feature Store de Snowflake y generando respuesta..."):
-                agent_res = query_gemini_agent(
+            with st.spinner("Analizando Feature Store y consultando Gemini..."):
+                agent_res = cached_query_gemini_agent(
                     user_query=active_query,
                     ticker=ticker,
                     market=market_choice,
                     timeframe=timeframe,
-                    quant_state=quant_state,
+                    regime=regime,
+                    last_price_rounded=round(last_price, 2),
                     api_key_override=st.session_state.get("gemini_api_key")
                 )
-            
-            # 3. Add assistant response
             st.session_state["chat_messages"].append({
                 "role": "assistant",
                 "content": agent_res["text"],

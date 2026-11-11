@@ -272,4 +272,3 @@ if __name__ == "__main__":
         sync_all_markets(days=args.days, timeframes=[args.timeframe, "1h"] if args.timeframe != "1h" else ["1h"])
     else:
         parser.print_help()
-

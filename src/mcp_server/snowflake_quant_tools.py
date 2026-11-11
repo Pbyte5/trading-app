@@ -1,10 +1,15 @@
 """Model Context Protocol (MCP) server & tool interface connected to Snowflake GOLD_QUANT_RAG."""
 
 import json
-from typing import Any, Dict, List, Optional
+import time
+from typing import Any, Dict, List, Optional, Tuple
 
 from src.config.snowflake_session import get_snowpark_session, get_raw_connection
-from src.rag.cortex_retriever import query_cortex_playbooks, find_historical_analogies
+from src.rag.cortex_retriever import query_cortex_playbooks, find_historical_analogies, clear_rag_cache
+
+# In-memory tool cache for quant market states
+_GOLD_STATE_CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
+GOLD_CACHE_TTL_SECONDS = 30.0
 
 try:
     try:
@@ -16,8 +21,24 @@ except Exception:
     mcp = None
 
 
+def clear_gold_tools_cache() -> None:
+    """Clear in-memory quant tools cache and RAG cache."""
+    _GOLD_STATE_CACHE.clear()
+    clear_rag_cache()
+
+
 def get_gold_market_state(ticker: str, timeframe: str = "1h", market: Optional[str] = None) -> Dict[str, Any]:
-    """Retrieve the latest quantitative state (VWAP, Volume Profile, Hurst, Regime) from Snowflake GOLD layer."""
+    """Retrieve the latest quantitative state (VWAP, Volume Profile, Hurst, Regime) from Snowflake GOLD layer.
+
+    Includes a 30-second tool cache to avoid redundant network roundtrips.
+    """
+    cache_key = f"{ticker.upper()}|{timeframe.lower()}|{str(market).upper() if market else ''}"
+    now = time.time()
+    if cache_key in _GOLD_STATE_CACHE:
+        cached_ts, cached_state = _GOLD_STATE_CACHE[cache_key]
+        if now - cached_ts < GOLD_CACHE_TTL_SECONDS:
+            return dict(cached_state)
+
     session = None
     try:
         try:
@@ -54,6 +75,9 @@ def get_gold_market_state(ticker: str, timeframe: str = "1h", market: Optional[s
                 if row:
                     raw_json = row[18]
                     state_data = json.loads(raw_json) if isinstance(raw_json, str) else raw_json
+
+        if state_data and "error" not in state_data:
+            _GOLD_STATE_CACHE[cache_key] = (time.time(), state_data)
 
         return state_data or {
             "error": f"No se encontró estado GOLD para {ticker}:{timeframe}.",

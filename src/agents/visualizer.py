@@ -24,14 +24,14 @@ def generate_investment_proposal_chart(
 
     # Determine colors
     is_buy = action.upper() == "BUY"
-    action_color = "#00c076" if is_buy else "#ff3b30" if action.upper() == "SELL" else "#94a3b8"
+    action_color = "#10b981" if is_buy else "#ef4444" if action.upper() == "SELL" else "#94a3b8"
 
     # Reference prices
     tp1 = take_profit_levels[0] if take_profit_levels else entry_price * (1.02 if is_buy else 0.98)
     tp2 = take_profit_levels[1] if len(take_profit_levels) > 1 else None
 
     # Compute bounding boxes for Risk Zone and Reward Zone
-    # X coordinates: 0 to 1
+    # X coordinates: 0 to 10
     x_min, x_max = 0, 10
 
     # 1. Risk Zone (Shaded Red)
@@ -40,36 +40,36 @@ def generate_investment_proposal_chart(
     fig.add_shape(
         type="rect",
         x0=x_min, y0=risk_low, x1=x_max, y1=risk_high,
-        fillcolor="rgba(255, 59, 48, 0.15)",
+        fillcolor="rgba(239, 68, 68, 0.12)",
         line=dict(width=0),
         layer="below"
     )
 
-    # 2. Reward Zone (Shaded Green)
+    # 2. Reward Zone (Shaded Emerald)
     max_tp = max(take_profit_levels) if take_profit_levels else tp1
     reward_low = min(entry_price, max_tp)
     reward_high = max(entry_price, max_tp)
     fig.add_shape(
         type="rect",
         x0=x_min, y0=reward_low, x1=x_max, y1=reward_high,
-        fillcolor="rgba(0, 192, 118, 0.15)",
+        fillcolor="rgba(16, 185, 129, 0.12)",
         line=dict(width=0),
         layer="below"
     )
 
     # 3. Horizontal Level Lines with Annotations
     levels = [
-        ("🛑 STOP LOSS (ATR)", stop_loss, "#ff3b30", "dash"),
-        ("⚡ PRECIO DE ENTRADA", entry_price, "#38bdf8", "solid"),
-        ("🎯 TAKE PROFIT 1", tp1, "#00c076", "dash"),
+        ("STOP LOSS [ATR]", stop_loss, "#ef4444", "dash"),
+        ("PRECIO DE ENTRADA", entry_price, "#38bdf8", "solid"),
+        ("TAKE PROFIT 1", tp1, "#10b981", "dash"),
     ]
     if tp2:
-        levels.append(("🎯 TAKE PROFIT 2 (Estructural)", tp2, "#34d399", "dot"))
+        levels.append(("TAKE PROFIT 2 [Estructural]", tp2, "#34d399", "dot"))
 
     if vwap:
-        levels.append(("🟣 VWAP Sesión", vwap, "#a855f7", "dot"))
+        levels.append(("VWAP SESION", vwap, "#818cf8", "dot"))
     if poc:
-        levels.append(("🟡 Nivel POC (Volumen)", poc, "#fbbf24", "dot"))
+        levels.append(("POC VOLUMEN", poc, "#f59e0b", "dot"))
 
     for label, price, color, dash in levels:
         fig.add_trace(go.Scatter(
@@ -84,15 +84,15 @@ def generate_investment_proposal_chart(
             showlegend=False
         ))
 
-    # Layout styling
+    # Layout styling (Dark Slate Institutional System)
     fig.update_layout(
         title=dict(
             text=f"<b>Mapeo Cuantitativo: {action} {ticker} ({timeframe}) | R:R = {rr_ratio:.2f}</b>",
             font=dict(size=14, color="#f8fafc"),
             x=0.02, y=0.96
         ),
-        paper_bgcolor="#0d1424",
-        plot_bgcolor="#080c14",
+        paper_bgcolor="#0f172a",
+        plot_bgcolor="#090d16",
         margin=dict(l=20, r=40, t=50, b=30),
         height=320,
         xaxis=dict(
@@ -102,7 +102,7 @@ def generate_investment_proposal_chart(
             range=[x_min, x_max]
         ),
         yaxis=dict(
-            gridcolor="rgba(30, 41, 59, 0.5)",
+            gridcolor="rgba(51, 65, 85, 0.4)",
             tickfont=dict(color="#94a3b8", size=10, family="monospace"),
             side="right"
         ),
@@ -158,18 +158,18 @@ def generate_microstructure_radar(quant_state: Dict[str, Any], ticker: str) -> g
         r=values,
         theta=categories,
         fill='toself',
-        fillcolor='rgba(0, 242, 254, 0.2)',
-        line=dict(color='#00f2fe', width=2),
+        fillcolor='rgba(56, 189, 248, 0.2)',
+        line=dict(color='#38bdf8', width=2),
         name=ticker
     ))
 
     fig.update_layout(
         polar=dict(
-            radialaxis=dict(visible=True, range=[0, 100], showticklabels=False, linecolor="#1e293b", gridcolor="#1e293b"),
-            angularaxis=dict(linecolor="#1e293b", gridcolor="#1e293b", tickfont=dict(color="#94a3b8", size=9))
+            radialaxis=dict(visible=True, range=[0, 100], showticklabels=False, linecolor="#334155", gridcolor="#1e293b"),
+            angularaxis=dict(linecolor="#334155", gridcolor="#1e293b", tickfont=dict(color="#94a3b8", size=9))
         ),
-        paper_bgcolor="#0d1424",
-        plot_bgcolor="#0d1424",
+        paper_bgcolor="#0f172a",
+        plot_bgcolor="#0f172a",
         margin=dict(l=30, r=30, t=30, b=30),
         height=260,
         showlegend=False

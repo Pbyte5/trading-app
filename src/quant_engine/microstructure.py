@@ -434,4 +434,3 @@ if __name__ == "__main__":
         compute_all_gold_states()
     else:
         parser.print_help()
-

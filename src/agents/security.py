@@ -71,10 +71,10 @@ def get_courtesy_response(text: str) -> str:
         "¡Hola! Buenos días. Soy el **Asistente Cuantitativo Institucional** de la "
         "Plataforma de Análisis de Mercado.\n\n"
         "Estoy a tu disposición para:\n"
-        "- 📊 **Proponer oportunidades de inversión** con niveles de Stop Loss (ATR), Take Profit y R:R $\\ge 2.0$.\n"
-        "- 🏛️ **Explicar las decisiones y vetos del Chief Risk Officer (CRO)**.\n"
-        "- 💼 **Responder consultas sobre el modelo de negocio** institucional y gestión de capital por 1/4 Kelly.\n"
-        "- 📈 **Ilustrar con gráficos** la lógica de microestructura (VWAP, POC, CVD, Hurst).\n\n"
+        "- **Proponer oportunidades de inversión** con niveles de Stop Loss (ATR), Take Profit y R:R >= 2.0.\n"
+        "- **Explicar las decisiones y vetos del Chief Risk Officer (CRO)**.\n"
+        "- **Responder consultas sobre el modelo de negocio** institucional y gestión de capital por 1/4 Kelly.\n"
+        "- **Ilustrar con gráficos** la lógica de microestructura (VWAP, POC, CVD, Hurst).\n\n"
         "¿Qué activo o consulta te gustaría revisar hoy?"
     )
 
@@ -95,7 +95,7 @@ def validate_user_input(text: str) -> Tuple[bool, str, str]:
     for pattern in PROMPT_INJECTION_PATTERNS:
         if re.search(pattern, cleaned, re.IGNORECASE):
             warning = (
-                "🛡️ **Alerta de Seguridad Institucional:**\n\n"
+                "**Alerta de Seguridad Institucional:**\n\n"
                 "La consulta contiene patrones de instrucción no permitidos (intento de evasión de directrices, "
                 "meta-prompt probing o inyección de código). Esta plataforma opera bajo gobernanza estricta "
                 "de seguridad de datos y preservación de capital. Tu interacción ha sido contenida de forma segura."
@@ -113,7 +113,7 @@ def validate_user_input(text: str) -> Tuple[bool, str, str]:
     # If the message does not have any domain keyword and is asking non-financial questions
     if not has_domain_keyword:
         off_domain_msg = (
-            "ℹ️ **Alcance Exclusivo de Negocio:**\n\n"
+            "**Alcance Exclusivo de Negocio:**\n\n"
             "Soy el Asesor Cuantitativo de la **Plataforma de Análisis de Mercado**. "
             "Mi especialidad se enfoca exclusivamente en:\n"
             "1. **Análisis cuantitativo de activos** (Crypto, Acciones, Forex).\n"

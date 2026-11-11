@@ -4,9 +4,21 @@ Performs hybrid search on playbooks and cosine similarity on historical episodic
 """
 
 import json
-from typing import Any, Dict, List, Optional
+import time
+from typing import Any, Dict, List, Optional, Tuple
 
 from src.config.snowflake_session import get_snowpark_session, get_raw_connection
+
+# In-memory TTL caches for RAG Playbooks and Episodic Analogies
+_PLAYBOOK_CACHE: Dict[str, Tuple[float, List[Dict[str, Any]]]] = {}
+_ANALOGIES_CACHE: Dict[str, Tuple[float, List[Dict[str, Any]]]] = {}
+RAG_CACHE_TTL_SECONDS = 300.0  # 5 minutes TTL for static playbooks and episodic setups
+
+
+def clear_rag_cache() -> None:
+    """Clear in-memory RAG playbooks and episodic memories cache."""
+    _PLAYBOOK_CACHE.clear()
+    _ANALOGIES_CACHE.clear()
 
 
 def query_cortex_playbooks(
@@ -18,7 +30,15 @@ def query_cortex_playbooks(
     """Query institutional playbooks using Snowflake Cortex Search or Vector Cosine Similarity.
 
     Falls back to SQL VECTOR_COSINE_SIMILARITY if Cortex Search Service is indexing.
+    Caches results in-memory for 5 minutes to avoid redundant vector calculations.
     """
+    cache_key = f"{query.strip().lower()}|{str(market_type).upper()}|{str(strategy_horizon).upper()}|{limit}"
+    now = time.time()
+    if cache_key in _PLAYBOOK_CACHE:
+        cached_ts, cached_res = _PLAYBOOK_CACHE[cache_key]
+        if now - cached_ts < RAG_CACHE_TTL_SECONDS:
+            return [dict(item) for item in cached_res]
+
     try:
         session = get_snowpark_session()
         use_snowpark = True
@@ -130,6 +150,7 @@ def query_cortex_playbooks(
     finally:
         session.close()
 
+    _PLAYBOOK_CACHE[cache_key] = (time.time(), results)
     return results
 
 
@@ -138,7 +159,17 @@ def find_historical_analogies(
     market: Optional[str] = None,
     limit: int = 5
 ) -> List[Dict[str, Any]]:
-    """Search EPISODIC_MEMORY_STATES using VECTOR_COSINE_SIMILARITY to find matching historical setups."""
+    """Search EPISODIC_MEMORY_STATES using VECTOR_COSINE_SIMILARITY to find matching historical setups.
+
+    Caches results in-memory for 5 minutes.
+    """
+    cache_key = f"{current_state_summary.strip().lower()}|{str(market).upper()}|{limit}"
+    now = time.time()
+    if cache_key in _ANALOGIES_CACHE:
+        cached_ts, cached_res = _ANALOGIES_CACHE[cache_key]
+        if now - cached_ts < RAG_CACHE_TTL_SECONDS:
+            return [dict(item) for item in cached_res]
+
     try:
         session = get_snowpark_session()
         use_snowpark = True
@@ -259,5 +290,6 @@ def find_historical_analogies(
     finally:
         session.close()
 
+    _ANALOGIES_CACHE[cache_key] = (time.time(), analogies)
     return analogies
 
