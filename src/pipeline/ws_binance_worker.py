@@ -254,18 +254,24 @@ class BinanceWebSocketWorker:
 
 def main():
     import argparse
+    from src.pipeline.bar_close_handler import on_bar_closed_pipeline
+
     parser = argparse.ArgumentParser(description="Binance WebSocket Worker (BTCUSDT)")
     parser.add_argument("--symbol", default="BTCUSDT", help="Symbol to stream (default: BTCUSDT)")
     parser.add_argument("--timeframe", default="5m", help="Candle timeframe (default: 5m)")
     parser.add_argument("--batch-size", type=int, default=500, help="Bronze buffer flush size")
     parser.add_argument("--flush-interval", type=float, default=60.0, help="Buffer flush interval (s)")
+    parser.add_argument("--no-db-sync", action="store_true", help="Disable Snowflake bar-close sync")
     args = parser.parse_args()
+
+    callback = None if args.no_db_sync else on_bar_closed_pipeline
 
     worker = BinanceWebSocketWorker(
         symbol=args.symbol,
         timeframe=args.timeframe,
         batch_size=args.batch_size,
-        flush_interval_sec=args.flush_interval
+        flush_interval_sec=args.flush_interval,
+        on_candle_close=callback
     )
 
     loop = asyncio.new_event_loop()
