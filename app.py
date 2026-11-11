@@ -39,11 +39,30 @@ st.set_page_config(
 # Institutional Theme Styling (Slate #090d16, Cards #0f172a, Sky Blue #38bdf8, Emerald #10b981)
 st.markdown("""
 <style>
-    /* 1. Base App Canvas (Deep Dark Slate) */
+    /* 1. Base App Canvas & Full-Screen Terminal */
     .stApp {
         background-color: #090d16;
         color: #e2e8f0;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    /* Full-screen terminal canvas */
+    .block-container {
+        padding-top: 0.75rem !important;
+        padding-bottom: 0.5rem !important;
+        padding-left: 1.25rem !important;
+        padding-right: 1.25rem !important;
+        max-width: 100% !important;
+    }
+
+    /* Sidebar Chat Styling */
+    section[data-testid="stSidebar"] .stChatMessage {
+        background-color: #0f172a !important;
+        border: 1px solid #1e293b !important;
+        border-radius: 8px !important;
+        padding: 8px 10px !important;
+        margin-bottom: 6px !important;
+        font-size: 0.85rem !important;
     }
     
     /* Transparent top header so custom buttons stay visible */
@@ -840,28 +859,10 @@ def main():
     if "gemini_api_key" not in st.session_state:
         st.session_state["gemini_api_key"] = get_settings().gemini_api_key or ""
 
-    # 1. Header Bar: Institutional Branding & Status Badges
-    st.markdown(f"""
-    <div class="terminal-header">
-        <div>
-            <span style="font-size: 1.2rem; font-weight: 800; color: #38bdf8; letter-spacing: 0.05em;">PLATAFORMA DE ANÁLISIS DE MERCADO</span>
-            <span style="font-size: 0.85rem; color: #94a3b8; margin-left: 12px;">Trading Institucional & Microestructura</span>
-        </div>
-        <div style="display: flex; gap: 10px; align-items: center;">
-            <span class="badge-info">
-                SNOWFLAKE: QUANT_INSTITUTIONAL_DB
-            </span>
-            <span class="{'cro-badge-approved' if is_live else 'cro-badge-rejected'}" style="font-size: 0.75rem; padding: 5px 12px;">
-                {'● PIPELINE EN VIVO' if is_live else '● PIPELINE DETENIDO'}
-            </span>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    # 2. Sidebar Controls
+    # 1. Sidebar - Asset Selection
     with st.sidebar:
         st.markdown("""
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #1e293b;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid #1e293b;">
             <span style="font-size: 0.95rem; font-weight: 800; color: #ffffff; letter-spacing: 0.04em;">MERCADO & ACTIVOS</span>
             <span style="font-size: 0.7rem; background: rgba(56, 189, 248, 0.12); color: #38bdf8; padding: 2px 8px; border-radius: 4px; font-weight: 700;">LIVE</span>
         </div>
@@ -882,79 +883,18 @@ def main():
         selected_asset_label = st.selectbox(
             "Activo Financiero",
             options=list(ASSET_REGISTRY.keys()),
-            index=0
+            index=0,
+            label_visibility="collapsed"
         )
         market_choice, ticker = ASSET_REGISTRY[selected_asset_label]
 
-        col_tf1, col_tf2 = st.columns([1.4, 1.0])
+        col_tf1, col_tf2 = st.columns([1.3, 1.0])
         with col_tf1:
             timeframe = st.selectbox("Temporalidad", options=["5m", "15m", "1h", "1d"], index=0)
         with col_tf2:
             days_lookback = st.number_input("Ventana (Días)", min_value=1, max_value=7, value=7, step=1)
 
-        # 1-Click Synchronization & Explicit Cache Purge Controls
-        col_btn1, col_btn2 = st.columns([1.4, 1.0])
-        with col_btn1:
-            if st.button("Sincronizar Activo", use_container_width=True, type="primary"):
-                with st.spinner(f"Sincronizando {ticker} ({timeframe}) con Snowflake..."):
-                    sync_single_asset(market=market_choice, ticker=ticker, timeframe=timeframe, days=days_lookback)
-                    st.cache_data.clear()
-                    clear_gold_tools_cache()
-                    st.success("Datos actualizados correctamente.")
-                    st.rerun()
-        with col_btn2:
-            if st.button("Purgar Caché", use_container_width=True, help="Limpia la memoria caché de consultas y RAG."):
-                st.cache_data.clear()
-                clear_gold_tools_cache()
-                st.toast("Caché purgada con éxito.", icon="✅")
-                st.rerun()
-
-        st.markdown("---")
-
-        with st.expander("Capas de Microestructura", expanded=True):
-            show_vwap = st.checkbox("Línea VWAP de Sesión", value=True)
-            show_poc = st.checkbox("Nivel POC (Point of Control)", value=True)
-            show_bands = st.checkbox("Bandas VWAP (±2s)", value=False)
-            show_val_vah = st.checkbox("Áreas de Valor (VAH / VAL)", value=False)
-            show_volume = st.checkbox("Histograma de Volumen", value=True)
-
-        with st.expander("Worker WebSocket Cripto", expanded=True):
-            live_ws = get_live_ws_candle(ticker)
-            if live_ws:
-                st.markdown(
-                    f"<div style='background:rgba(16,185,129,0.15); border:1px solid #10b981; border-radius:6px; padding:10px; font-size:0.8rem;'>"
-                    f"🟢 <b>WebSocket Binance Conectado</b><br>"
-                    f"Precio vivo: <b>${live_ws.get('close', 0.0):,.2f}</b><br>"
-                    f"CVD tiempo real: <b>{live_ws.get('cvd', 0.0):+,.2f}</b><br>"
-                    f"Trades vela 5m: <b>{live_ws.get('trades_count', 0)}</b>"
-                    f"</div>",
-                    unsafe_allow_html=True
-                )
-            else:
-                st.markdown(
-                    "<div style='background:rgba(148,163,184,0.1); border:1px solid #334155; border-radius:6px; padding:10px; font-size:0.8rem; color:#94a3b8;'>"
-                    "⚪ <b>Worker Offline</b><br>"
-                    "Ejecuta en terminal:<br><code>python3 -m src.pipeline.ws_binance_worker</code>"
-                    "</div>",
-                    unsafe_allow_html=True
-                )
-
-        with st.expander("Gestión de Capital", expanded=False):
-            equity = st.number_input("Capital Institucional (USD)", min_value=1000.0, value=100000.0, step=10000.0)
-
-        with st.expander("Configuración Gemini API", expanded=False):
-            gemini_key_input = st.text_input(
-                "Gemini API Key:",
-                value=st.session_state.get("gemini_api_key", ""),
-                type="password",
-                placeholder="AIzaSy...",
-                help="Clave API de Google Gemini para habilitar el razonamiento institucional."
-            )
-            if gemini_key_input != st.session_state.get("gemini_api_key", ""):
-                st.session_state["gemini_api_key"] = gemini_key_input
-                st.success("Clave Gemini actualizada.")
-
-    # 3. Load Candlestick Data & Quant State from Snowflake (Multi-tier Cache)
+    # 2. Load Candlestick Data & Quant State from Snowflake (Multi-tier Cache)
     df_candles = get_candles_with_live_overlay(market=market_choice, ticker=ticker, timeframe=timeframe, limit=2016)
     
     if df_candles.empty:
@@ -970,17 +910,170 @@ def main():
     regime = reg_data.get("regime", "TRENDING_MOMENTUM")
     hurst = reg_data.get("hurst", 0.55)
 
-    # ==============================================================================
-    # 4. TAB NAVIGATION & MAIN VIEWS (No unnecessary reruns, 100% accessible)
-    # ==============================================================================
-    tab_chart, tab_committee, tab_chat = st.tabs([
-        "Terminal Gráfica",
-        "Comité de Riesgo (CRO)",
-        "Asesor Cuantitativo"
+    # 3. Sidebar - Asesor Cuantitativo (Chat IA con Prompts Sugeridos)
+    with st.sidebar:
+        st.markdown("---")
+        st.markdown(f"""
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+            <span style="font-size: 0.92rem; font-weight: 800; color: #ffffff; letter-spacing: 0.04em;">🤖 ASESOR CUANTITATIVO</span>
+            <span class="badge-info" style="font-size: 0.65rem; padding: 2px 7px;">GEMINI + GOLD</span>
+        </div>
+        <div style="font-size: 0.75rem; color: #94a3b8; margin-bottom: 8px;">
+            Foco: <b style="color:#38bdf8;">{ticker}</b> ({timeframe}) | <b>${last_price:,.2f}</b>
+        </div>
+        """, unsafe_allow_html=True)
+
+        st.markdown("<p style='font-size: 0.72rem; color: #64748b; margin: 0 0 4px 0; text-transform: uppercase; font-weight: 700; letter-spacing: 0.05em;'>Sugerencias de Consulta:</p>", unsafe_allow_html=True)
+        
+        trigger_prompt = None
+        col_p1, col_p2 = st.columns(2)
+        with col_p1:
+            if st.button("📋 Plan Trading", use_container_width=True, key="sb_btn_plan", help="Genera plan estructurado con R:R y niveles"):
+                trigger_prompt = f"Genera un plan de trading institucional detallado para {ticker} ({timeframe}) con niveles de entrada, Stop Loss por ATR, Take Profit y ratio R:R."
+            if st.button("🔍 Microestructura", use_container_width=True, key="sb_btn_micro", help="Analiza VWAP, POC y CVD"):
+                trigger_prompt = f"Analiza en detalle la microestructura actual de {ticker} ({timeframe}): VWAP, POC, áreas de valor (VAH/VAL) y flujo CVD."
+        with col_p2:
+            if st.button("🛡️ Veredicto CRO", use_container_width=True, key="sb_btn_cro", help="Consulta veredicto y control de riesgo"):
+                trigger_prompt = f"Explica el veredicto del Chief Risk Officer (CRO) sobre {ticker}. ¿Autoriza o veta la operación y cuáles son los criterios de preservación de capital?"
+            if st.button("💧 Zonas Liquidez", use_container_width=True, key="sb_btn_liq", help="Detecta liquidity pools"):
+                trigger_prompt = f"Identifica los liquidity pools y zonas de alta liquidez para {ticker} ({timeframe}) y dónde están los stops institucionales."
+
+        if st.button("🧹 Limpiar Historial", use_container_width=True, key="sb_btn_clear"):
+            st.session_state["chat_messages"] = []
+            st.rerun()
+
+        chat_box = st.container(height=340)
+        with chat_box:
+            if not st.session_state["chat_messages"]:
+                st.markdown(
+                    f"<div style='color: #94a3b8; font-size: 0.8rem; padding: 4px; line-height: 1.4;'>"
+                    f"👋 <b>Asesor Cuantitativo listo.</b><br>"
+                    f"Conectado a Feature Store Gold y Gemini.<br><br>"
+                    f"Haz clic en un botón sugerido arriba o escribe abajo tu consulta sobre microestructura, riesgo o estrategia."
+                    f"</div>",
+                    unsafe_allow_html=True
+                )
+            for msg in st.session_state["chat_messages"]:
+                with st.chat_message(msg["role"]):
+                    st.markdown(msg["content"])
+                    if msg.get("chart") is not None:
+                        st.plotly_chart(msg["chart"], use_container_width=True)
+
+        user_input = st.chat_input("Consulta al Asesor IA...", key="sidebar_chat_input")
+        active_query = trigger_prompt or user_input
+
+        if active_query:
+            st.session_state["chat_messages"].append({"role": "user", "content": active_query, "chart": None})
+            with st.spinner("Analizando con Gemini..."):
+                agent_res = cached_query_gemini_agent(
+                    user_query=active_query,
+                    ticker=ticker,
+                    market=market_choice,
+                    timeframe=timeframe,
+                    regime=regime,
+                    last_price_rounded=round(last_price, 2),
+                    api_key_override=st.session_state.get("gemini_api_key")
+                )
+            st.session_state["chat_messages"].append({
+                "role": "assistant",
+                "content": agent_res["text"],
+                "chart": agent_res.get("chart")
+            })
+            st.rerun()
+
+    # 4. Main Canvas: Top Bar & Menú de Configuración Independiente
+    col_head_title, col_head_config = st.columns([0.80, 0.20])
+    with col_head_title:
+        st.markdown(f"""
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 6px; flex-wrap: wrap;">
+            <span style="font-size: 1.25rem; font-weight: 800; color: #38bdf8; letter-spacing: 0.04em;">TRADING TERMINAL</span>
+            <span style="font-size: 0.82rem; background: #0f172a; color: #f8fafc; padding: 3px 10px; border-radius: 6px; border: 1px solid #1e293b; font-family: monospace; font-weight: 700;">
+                {ticker} • {timeframe}
+            </span>
+            <span class="{'cro-badge-approved' if is_live else 'cro-badge-rejected'}" style="font-size: 0.72rem; padding: 3px 10px;">
+                {'● LIVE' if is_live else '● SUSPENDIDO'}
+            </span>
+            <span class="badge-info" style="font-size: 0.72rem; padding: 3px 10px;">
+                SNOWFLAKE: QUANT_INSTITUTIONAL_DB
+            </span>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col_head_config:
+        with st.popover("⚙️ Configuración", use_container_width=True):
+            st.markdown("<h4 style='margin-top:0; color:#38bdf8;'>⚙️ Panel de Configuración</h4>", unsafe_allow_html=True)
+            
+            st.markdown("##### 1. Capas de Microestructura")
+            show_vwap = st.checkbox("Línea VWAP de Sesión", value=True, key="cfg_vwap")
+            show_poc = st.checkbox("Nivel POC (Point of Control)", value=True, key="cfg_poc")
+            show_bands = st.checkbox("Bandas VWAP (±2s)", value=False, key="cfg_bands")
+            show_val_vah = st.checkbox("Áreas de Valor (VAH / VAL)", value=False, key="cfg_val_vah")
+            show_volume = st.checkbox("Histograma de Volumen", value=True, key="cfg_volume")
+            
+            st.markdown("---")
+            st.markdown("##### 2. Pipeline en Vivo & Sincronización")
+            live_ws = get_live_ws_candle(ticker)
+            if live_ws:
+                st.markdown(
+                    f"<div style='background:rgba(16,185,129,0.15); border:1px solid #10b981; border-radius:6px; padding:8px; font-size:0.8rem;'>"
+                    f"🟢 <b>WebSocket Binance Conectado</b><br>"
+                    f"Precio vivo: <b>${live_ws.get('close', 0.0):,.2f}</b><br>"
+                    f"CVD tiempo real: <b>{live_ws.get('cvd', 0.0):+,.2f}</b><br>"
+                    f"Trades vela 5m: <b>{live_ws.get('trades_count', 0)}</b>"
+                    f"</div>",
+                    unsafe_allow_html=True
+                )
+            else:
+                st.markdown(
+                    "<div style='background:rgba(148,163,184,0.1); border:1px solid #334155; border-radius:6px; padding:8px; font-size:0.8rem; color:#94a3b8;'>"
+                    "⚪ <b>Worker Offline</b><br>"
+                    "Ejecuta en terminal:<br><code>python3 -m src.pipeline.ws_binance_worker</code>"
+                    "</div>",
+                    unsafe_allow_html=True
+                )
+            
+            col_s1, col_s2 = st.columns(2)
+            with col_s1:
+                if st.button("Sincronizar Activo", use_container_width=True, type="primary", key="pop_sync"):
+                    with st.spinner(f"Sincronizando {ticker} con Snowflake..."):
+                        sync_single_asset(market=market_choice, ticker=ticker, timeframe=timeframe, days=days_lookback)
+                        st.cache_data.clear()
+                        clear_gold_tools_cache()
+                        st.success("Sincronizado.")
+                        st.rerun()
+            with col_s2:
+                if st.button("Purgar Caché", use_container_width=True, key="pop_purge"):
+                    st.cache_data.clear()
+                    clear_gold_tools_cache()
+                    st.toast("Caché purgada.", icon="✅")
+                    st.rerun()
+
+            st.markdown("---")
+            st.markdown("##### 3. Gestión de Capital")
+            equity = st.number_input("Capital Institucional (USD)", min_value=1000.0, value=100000.0, step=10000.0, key="pop_equity")
+
+            st.markdown("---")
+            st.markdown("##### 4. Configuración Gemini API")
+            gemini_key_input = st.text_input(
+                "Gemini API Key:",
+                value=st.session_state.get("gemini_api_key", ""),
+                type="password",
+                placeholder="AIzaSy...",
+                key="pop_gemini_key",
+                help="Clave API de Google Gemini para habilitar el razonamiento institucional."
+            )
+            if gemini_key_input != st.session_state.get("gemini_api_key", ""):
+                st.session_state["gemini_api_key"] = gemini_key_input
+                st.success("Clave Gemini actualizada.")
+
+    # 5. TAB NAVIGATION (Terminal Gráfica a Pantalla Completa & Comité CRO)
+    tab_chart, tab_committee = st.tabs([
+        "📈 Terminal Gráfica Institucional",
+        "🛡️ Comité de Riesgo (CRO) & Propuesta"
     ])
 
     # ------------------------------------------------------------------------------
-    # TAB 1: TRADINGVIEW CANDLESTICK CHART
+    # TAB 1: TRADINGVIEW CANDLESTICK CHART (PANTALLA COMPLETA)
     # ------------------------------------------------------------------------------
     with tab_chart:
         chart_html = render_tradingview_chart_html(
@@ -995,7 +1088,7 @@ def main():
             show_val_vah=show_val_vah,
             show_volume=show_volume
         )
-        components.html(chart_html, height=740)
+        components.html(chart_html, height=780)
 
     # ------------------------------------------------------------------------------
     # TAB 2: COMITÉ AGÉNTICO & VEREDICTO CRO (CACHED ANALYSIS)
@@ -1151,87 +1244,6 @@ def main():
             timeframe=timeframe
         )
         st.plotly_chart(chart_comm, use_container_width=True)
-
-    # ------------------------------------------------------------------------------
-    # TAB 3: ASESOR CUANTITATIVO IA (GEMINI - CACHED QUERY PIPELINE)
-    # ------------------------------------------------------------------------------
-    with tab_chat:
-        if not st.session_state["chat_messages"]:
-            welcome_msg = (
-                f"Asesor Cuantitativo conectado a la capa GOLD de Snowflake y Google Gemini.\n\n"
-                f"Activo monitoreado: **{ticker}** ({market_choice} • {timeframe}) | Último precio: **{last_price:,.4f}** "
-                f"| Régimen: **{regime}** (Hurst: `{hurst:.3f}`).\n\n"
-                f"Capacidades disponibles:\n"
-                f"- **Propuesta estructurada de inversión**: Niveles de Entrada, Stop Loss por ATR, Take Profit y ratio R:R >= 2.0.\n"
-                f"- **Explicación técnica con gráficos**: Desglose de VWAP, POC y perfiles de liquidez.\n"
-                f"- **Evaluación del modelo de riesgo**: Gestión de capital por 1/4 Kelly y política de preservación de capital del CRO."
-            )
-            st.session_state["chat_messages"].append({"role": "assistant", "content": welcome_msg, "chart": None})
-
-        st.markdown(f"""
-        <div style="background: #0f172a; border: 1px solid #1e293b; border-radius: 10px; padding: 14px 18px; margin-bottom: 12px;">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <div>
-                    <h3 style="margin: 0; color: #f8fafc; font-size: 1.15rem; font-weight: 700;">Asesor Cuantitativo & de Negocio (Gemini)</h3>
-                    <p style="margin: 3px 0 0 0; color: #94a3b8; font-size: 0.85rem;">
-                        Activo en Foco: <strong style="color: #38bdf8;">{ticker}</strong> ({market_choice} • {timeframe}) | 
-                        Precio: <strong>{last_price:,.4f}</strong> | Régimen: <strong style="color: #f59e0b;">{regime}</strong>
-                    </p>
-                </div>
-                <div>
-                    <span class="cro-badge-approved" style="font-size: 0.75rem; padding: 4px 12px;">
-                        AGENTE ACTIVO
-                    </span>
-                </div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-        # Quick Prompt Buttons
-        q_col1, q_col2, q_col3, q_col4 = st.columns([2.2, 2.2, 2.2, 1.2])
-        trigger_prompt = None
-        with q_col1:
-            if st.button(f"Proponer Inversión en {ticker}", use_container_width=True, key="btn_qp_prop"):
-                trigger_prompt = f"Proponme una inversión estructurada y fundamentada para {ticker} ({timeframe}) evaluando VWAP, POC, ATR y el ratio R:R."
-        with q_col2:
-            if st.button("Explicar Modelo y CRO", use_container_width=True, key="btn_qp_model"):
-                trigger_prompt = "¿Cómo funciona el modelo de negocio institucional de la plataforma y por qué el CRO aplica veto obligatorio?"
-        with q_col3:
-            if st.button("Analizar Microestructura", use_container_width=True, key="btn_qp_micro"):
-                trigger_prompt = f"Analiza en detalle la microestructura actual de {ticker}: ¿Dónde está el POC, el VWAP y qué indica el CVD?"
-        with q_col4:
-            if st.button("Limpiar Historial", use_container_width=True, key="btn_qp_clear"):
-                st.session_state["chat_messages"] = []
-                st.rerun()
-
-        # Render Conversation History
-        for msg in st.session_state["chat_messages"]:
-            with st.chat_message(msg["role"]):
-                st.markdown(msg["content"])
-                if msg.get("chart") is not None:
-                    st.plotly_chart(msg["chart"], use_container_width=True)
-
-        user_input = st.chat_input("Escribe tu consulta sobre inversión, microestructura o modelo de negocio...")
-        active_query = trigger_prompt or user_input
-
-        if active_query:
-            st.session_state["chat_messages"].append({"role": "user", "content": active_query, "chart": None})
-            with st.spinner("Analizando Feature Store y consultando Gemini..."):
-                agent_res = cached_query_gemini_agent(
-                    user_query=active_query,
-                    ticker=ticker,
-                    market=market_choice,
-                    timeframe=timeframe,
-                    regime=regime,
-                    last_price_rounded=round(last_price, 2),
-                    api_key_override=st.session_state.get("gemini_api_key")
-                )
-            st.session_state["chat_messages"].append({
-                "role": "assistant",
-                "content": agent_res["text"],
-                "chart": agent_res.get("chart")
-            })
-            st.rerun()
 
 
 if __name__ == "__main__":
