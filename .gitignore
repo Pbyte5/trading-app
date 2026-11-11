@@ -8,3 +8,11 @@ venv/
 *.log
 .DS_Store
 
+# Live state and runtime caches (DO NOT commit)
+live_daemon_state.json
+data/bronze_buffer/
+data/live_state/
+*.parquet
+*.jsonl.gz
+
+

@@ -4,12 +4,79 @@ Provides connection utilities and database initialization (--init-db).
 """
 
 import argparse
+import logging
 import os
 import sys
+import threading
 from pathlib import Path
 from typing import Dict, Any, Optional
 
 from src.config.settings import get_settings
+
+logger = logging.getLogger("snowflake_session")
+
+# Thread-safe singletons for connection pooling across the process
+_session_lock = threading.Lock()
+_shared_raw_conn = None
+_shared_snowpark_session = None
+_current_raw_tag: Optional[str] = None
+_current_snowpark_tag: Optional[str] = None
+
+
+class SharedSnowflakeConnectionProxy:
+    """Wrapper around SnowflakeConnection that prevents callers from closing the shared connection.
+    
+    Callers that execute 'finally: conn.close()' will not terminate the underlying
+    Snowflake session, allowing warehouse auto-suspend and connection reuse.
+    """
+    def __init__(self, target_conn):
+        self._target = target_conn
+
+    def close(self) -> None:
+        # Intercept close() to preserve the shared singleton session
+        pass
+
+    def force_close(self) -> None:
+        """Explicitly terminate the underlying Snowflake connection."""
+        try:
+            self._target.close()
+        except Exception as e:
+            logger.debug(f"Error closing underlying Snowflake connection: {e}")
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._target, name)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        pass
+
+
+class SharedSnowparkSessionProxy:
+    """Wrapper around Snowpark Session that prevents callers from closing the shared session."""
+    def __init__(self, target_session):
+        self._target = target_session
+
+    def close(self) -> None:
+        # Intercept close() to preserve the shared singleton session
+        pass
+
+    def force_close(self) -> None:
+        """Explicitly terminate the underlying Snowpark session."""
+        try:
+            self._target.close()
+        except Exception as e:
+            logger.debug(f"Error closing underlying Snowpark session: {e}")
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._target, name)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        pass
 
 
 def get_private_key_bytes(key_path: str, passphrase: Optional[str] = None) -> bytes:
@@ -79,8 +146,8 @@ def build_connection_params(use_initial_warehouse: bool = False) -> Dict[str, An
     return params
 
 
-def get_snowpark_session(use_initial_warehouse: bool = False):
-    """Create and return a Snowpark Session instance."""
+def get_snowpark_session(use_initial_warehouse: bool = False, query_tag: Optional[str] = None):
+    """Return a shared Snowpark Session instance (or fresh one if use_initial_warehouse=True)."""
     try:
         from snowflake.snowpark import Session
     except ImportError as e:
@@ -89,13 +156,43 @@ def get_snowpark_session(use_initial_warehouse: bool = False):
             "Instálalo con 'pip install snowflake-snowpark-python'."
         ) from e
 
-    params = build_connection_params(use_initial_warehouse=use_initial_warehouse)
-    session = Session.builder.configs(params).create()
-    return session
+    if use_initial_warehouse:
+        params = build_connection_params(use_initial_warehouse=True)
+        return Session.builder.configs(params).create()
+
+    global _shared_snowpark_session, _current_snowpark_tag
+
+    with _session_lock:
+        tag = query_tag or os.getenv("SNOWFLAKE_QUERY_TAG", "PROJECT_FINANCIAL_AGENT")
+        is_healthy = False
+        if _shared_snowpark_session is not None:
+            try:
+                # Snowpark session validity check
+                if hasattr(_shared_snowpark_session, "_conn") and hasattr(_shared_snowpark_session._conn, "is_closed"):
+                    is_healthy = not _shared_snowpark_session._conn.is_closed()
+                else:
+                    is_healthy = True
+            except Exception:
+                is_healthy = False
+
+        if not is_healthy:
+            params = build_connection_params(use_initial_warehouse=False)
+            params["session_parameters"] = {"QUERY_TAG": tag}
+            _shared_snowpark_session = Session.builder.configs(params).create()
+            _current_snowpark_tag = tag
+        elif query_tag and query_tag != _current_snowpark_tag:
+            try:
+                safe_tag = "".join(c for c in query_tag if c.isalnum() or c in "_-:")
+                _shared_snowpark_session.sql(f"ALTER SESSION SET QUERY_TAG = '{safe_tag}'").collect()
+                _current_snowpark_tag = safe_tag
+            except Exception as e:
+                logger.warning(f"Error setting Snowpark QUERY_TAG: {e}")
+
+        return SharedSnowparkSessionProxy(_shared_snowpark_session)
 
 
-def get_raw_connection(use_initial_warehouse: bool = False):
-    """Return a raw snowflake-connector-python connection for direct DDL execution."""
+def get_raw_connection(use_initial_warehouse: bool = False, query_tag: Optional[str] = None):
+    """Return a shared raw snowflake connection (or fresh one if use_initial_warehouse=True)."""
     try:
         import snowflake.connector
     except ImportError as e:
@@ -104,8 +201,79 @@ def get_raw_connection(use_initial_warehouse: bool = False):
             "Instálalo con 'pip install snowflake-connector-python'."
         ) from e
 
-    params = build_connection_params(use_initial_warehouse=use_initial_warehouse)
-    return snowflake.connector.connect(**params)
+    if use_initial_warehouse:
+        params = build_connection_params(use_initial_warehouse=True)
+        return snowflake.connector.connect(**params)
+
+    global _shared_raw_conn, _current_raw_tag
+
+    with _session_lock:
+        tag = query_tag or os.getenv("SNOWFLAKE_QUERY_TAG", "PROJECT_FINANCIAL_AGENT")
+        is_healthy = False
+        if _shared_raw_conn is not None:
+            try:
+                is_healthy = not _shared_raw_conn.is_closed()
+            except Exception:
+                is_healthy = False
+
+        if not is_healthy:
+            params = build_connection_params(use_initial_warehouse=False)
+            params["session_parameters"] = {"QUERY_TAG": tag}
+            _shared_raw_conn = snowflake.connector.connect(**params)
+            _current_raw_tag = tag
+        elif query_tag and query_tag != _current_raw_tag:
+            try:
+                safe_tag = "".join(c for c in query_tag if c.isalnum() or c in "_-:")
+                with _shared_raw_conn.cursor() as cur:
+                    cur.execute(f"ALTER SESSION SET QUERY_TAG = '{safe_tag}'")
+                _current_raw_tag = safe_tag
+            except Exception as e:
+                logger.warning(f"Error setting raw connection QUERY_TAG: {e}")
+
+        return SharedSnowflakeConnectionProxy(_shared_raw_conn)
+
+
+def close_all_shared_connections() -> None:
+    """Explicitly terminate all shared connections (call at shutdown)."""
+    global _shared_raw_conn, _shared_snowpark_session, _current_raw_tag, _current_snowpark_tag
+    with _session_lock:
+        if _shared_raw_conn is not None:
+            try:
+                _shared_raw_conn.close()
+            except Exception:
+                pass
+            _shared_raw_conn = None
+            _current_raw_tag = None
+
+        if _shared_snowpark_session is not None:
+            try:
+                _shared_snowpark_session.close()
+            except Exception:
+                pass
+            _shared_snowpark_session = None
+            _current_snowpark_tag = None
+
+
+def set_active_query_tag(tag: str) -> None:
+    """Set QUERY_TAG on active shared connections."""
+    global _current_raw_tag, _current_snowpark_tag
+    safe_tag = "".join(c for c in tag if c.isalnum() or c in "_-:")
+    with _session_lock:
+        if _shared_raw_conn is not None and not _shared_raw_conn.is_closed():
+            try:
+                with _shared_raw_conn.cursor() as cur:
+                    cur.execute(f"ALTER SESSION SET QUERY_TAG = '{safe_tag}'")
+                _current_raw_tag = safe_tag
+            except Exception as e:
+                logger.warning(f"Failed to update raw connection QUERY_TAG: {e}")
+
+        if _shared_snowpark_session is not None:
+            try:
+                _shared_snowpark_session.sql(f"ALTER SESSION SET QUERY_TAG = '{safe_tag}'").collect()
+                _current_snowpark_tag = safe_tag
+            except Exception as e:
+                logger.warning(f"Failed to update Snowpark QUERY_TAG: {e}")
+
 
 
 def execute_sql_file(conn_or_session, sql_file_path: Path) -> None:
