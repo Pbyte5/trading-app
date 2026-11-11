@@ -6,7 +6,7 @@ Implements batched loading and SQL MERGE (Upsert) to avoid duplicate candles.
 import json
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List, Optional, Union
 
 from src.config.snowflake_session import get_snowpark_session, get_raw_connection
 

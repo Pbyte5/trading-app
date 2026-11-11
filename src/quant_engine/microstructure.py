@@ -5,7 +5,7 @@ Reads from SILVER_CLEAN.MARKET_CANDLES and writes to GOLD_QUANT_RAG.QUANT_MARKET
 
 import json
 import math
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 
 from src.config.snowflake_session import get_snowpark_session, get_raw_connection

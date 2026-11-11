@@ -1,7 +1,7 @@
 """Market regime detection: Hurst Exponent (H), ATR(14) and volatility regime."""
 
 import math
-from typing import Dict, List, Tuple
+from typing import Any, Dict, List, Tuple
 import numpy as np
 
 
