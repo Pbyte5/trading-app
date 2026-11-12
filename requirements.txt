@@ -13,6 +13,10 @@ numpy>=1.26.0
 pandas>=2.2.0
 scipy>=1.13.0
 
+# Real-Time Event Streaming & Kafka
+confluent-kafka>=2.4.0
+pyyaml>=6.0.0
+
 # Network & APIs
 requests>=2.31.0
 httpx>=0.27.0

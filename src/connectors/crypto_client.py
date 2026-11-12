@@ -21,7 +21,7 @@ def fetch_binance_klines(
     timeframe: str = "1h",
     days: int = 7,
     limit: Optional[int] = None,
-    is_futures: bool = True
+    is_futures: bool = False
 ) -> List[Dict[str, Any]]:
     """Fetch candles from Binance Spot or Futures REST API with 7-day lookback support."""
     settings = get_settings()
@@ -171,7 +171,7 @@ def fetch_and_load_crypto(
     bronze_count = load_raw_to_bronze(
         records=new_candles,
         table_name="RAW_MARKET_FEED",
-        source="BINANCE_FUTURES",
+        source="BINANCE_SPOT",
         market="CRYPTO",
         ticker=ticker,
         timeframe=timeframe

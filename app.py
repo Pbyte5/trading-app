@@ -277,45 +277,134 @@ st.markdown("""
         white-space: nowrap;
     }
 
-    /* 5. Spacious High-Agency Sidebar (480px Expanded Width for Rich Chat) */
+    /* 5. High-Agency Responsive Sidebar (Adaptive for Laptops & Desktop Monitors) */
     section[data-testid="stSidebar"],
     div[data-testid="stSidebar"] {
         background-color: #090e1a !important;
         border-right: 1px solid #1e293b !important;
     }
     
-    /* Enforce generous width when sidebar is open */
+    /* Enforce generous width on large screens, perfectly balanced on laptops */
     section[data-testid="stSidebar"]:not([data-collapsed="true"]),
     div[data-testid="stSidebar"]:not([data-collapsed="true"]) {
-        width: 480px !important;
-        min-width: 480px !important;
-        max-width: 520px !important;
+        width: 460px !important;
+        min-width: 420px !important;
+        max-width: 500px !important;
     }
     section[data-testid="stSidebar"]:not([data-collapsed="true"]) > div:first-child,
     div[data-testid="stSidebar"]:not([data-collapsed="true"]) > div:first-child {
-        width: 480px !important;
-        min-width: 480px !important;
+        width: 460px !important;
+        min-width: 420px !important;
     }
     section[data-testid="stSidebar"]:not([data-collapsed="true"]) [data-testid="stSidebarContent"],
     div[data-testid="stSidebar"]:not([data-collapsed="true"]) [data-testid="stSidebarContent"] {
-        width: 480px !important;
-        min-width: 480px !important;
-        scrollbar-gutter: auto !important;
-        overflow-y: hidden !important;
-        -ms-overflow-style: none !important;
-        scrollbar-width: none !important;
+        width: 460px !important;
+        min-width: 420px !important;
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+        scrollbar-gutter: stable !important;
+        scrollbar-width: thin !important;
+        scrollbar-color: rgba(56, 189, 248, 0.25) transparent !important;
     }
+
+    /* Elegant Custom Scrollbar for Sidebar */
     section[data-testid="stSidebar"] [data-testid="stSidebarContent"]::-webkit-scrollbar {
-        display: none !important;
-        width: 0 !important;
-        height: 0 !important;
+        display: block !important;
+        width: 5px !important;
     }
+    section[data-testid="stSidebar"] [data-testid="stSidebarContent"]::-webkit-scrollbar-track {
+        background: transparent !important;
+    }
+    section[data-testid="stSidebar"] [data-testid="stSidebarContent"]::-webkit-scrollbar-thumb {
+        background: rgba(56, 189, 248, 0.25) !important;
+        border-radius: 4px !important;
+    }
+    section[data-testid="stSidebar"] [data-testid="stSidebarContent"]::-webkit-scrollbar-thumb:hover {
+        background: rgba(56, 189, 248, 0.55) !important;
+    }
+
+    /* Responsive Sidebar Width on Laptops (< 1440px) */
+    @media (max-width: 1440px) {
+        section[data-testid="stSidebar"]:not([data-collapsed="true"]),
+        div[data-testid="stSidebar"]:not([data-collapsed="true"]),
+        section[data-testid="stSidebar"]:not([data-collapsed="true"]) > div:first-child,
+        div[data-testid="stSidebar"]:not([data-collapsed="true"]) > div:first-child,
+        section[data-testid="stSidebar"]:not([data-collapsed="true"]) [data-testid="stSidebarContent"],
+        div[data-testid="stSidebar"]:not([data-collapsed="true"]) [data-testid="stSidebarContent"] {
+            width: 380px !important;
+            min-width: 330px !important;
+            max-width: 400px !important;
+        }
+    }
+
+    /* Full-width on mobile/tablets (< 992px) */
+    @media (max-width: 992px) {
+        section[data-testid="stSidebar"]:not([data-collapsed="true"]),
+        div[data-testid="stSidebar"]:not([data-collapsed="true"]),
+        section[data-testid="stSidebar"]:not([data-collapsed="true"]) > div:first-child,
+        div[data-testid="stSidebar"]:not([data-collapsed="true"]) > div:first-child,
+        section[data-testid="stSidebar"]:not([data-collapsed="true"]) [data-testid="stSidebarContent"],
+        div[data-testid="stSidebar"]:not([data-collapsed="true"]) [data-testid="stSidebarContent"] {
+            width: 100vw !important;
+            min-width: 100% !important;
+            max-width: 100% !important;
+        }
+    }
+
     div[data-testid="stSidebarUserContent"] {
         max-width: 100% !important;
         padding-top: 0 !important;
         padding-bottom: 0.5rem !important;
-        padding-left: 1.25rem !important;
-        padding-right: 1.25rem !important;
+        padding-left: 1.1rem !important;
+        padding-right: 1.1rem !important;
+    }
+
+    /* Responsive Chat Container in Sidebar: scales smoothly on desktop, laptop, and ultra-wide */
+    section[data-testid="stSidebar"] div[data-testid="stVerticalBlockBorderWrapper"],
+    section[data-testid="stSidebar"] div[data-testid="stVerticalBlockBorderWrapper"]:has([data-testid="stChatMessage"]) {
+        height: calc(100vh - 310px) !important;
+        min-height: 220px !important;
+        max-height: 540px !important;
+    }
+
+    /* Laptop screens with lower vertical height (e.g. 768p or 1080p with 125%/150% scaling) */
+    @media (max-height: 820px) {
+        section[data-testid="stSidebar"] div[data-testid="stVerticalBlockBorderWrapper"] {
+            height: calc(100vh - 280px) !important;
+            max-height: 380px !important;
+            min-height: 180px !important;
+        }
+    }
+    @media (max-height: 700px) {
+        section[data-testid="stSidebar"] div[data-testid="stVerticalBlockBorderWrapper"] {
+            height: calc(100vh - 260px) !important;
+            max-height: 290px !important;
+            min-height: 150px !important;
+        }
+    }
+
+    /* Sticky, Always-Visible Chat Input in Sidebar */
+    section[data-testid="stSidebar"] div[data-testid="stChatInput"] {
+        position: sticky !important;
+        bottom: 0px !important;
+        background-color: #090e1a !important;
+        padding-top: 8px !important;
+        padding-bottom: 8px !important;
+        margin-top: 4px !important;
+        z-index: 99 !important;
+        border-top: 1px solid rgba(56, 189, 248, 0.15) !important;
+        box-shadow: 0 -4px 14px rgba(7, 10, 19, 0.75) !important;
+    }
+    section[data-testid="stSidebar"] div[data-testid="stChatInput"] textarea {
+        background-color: #0f172a !important;
+        border: 1px solid rgba(56, 189, 248, 0.3) !important;
+        color: #f8fafc !important;
+        border-radius: 8px !important;
+        font-size: 0.84rem !important;
+    }
+    section[data-testid="stSidebar"] div[data-testid="stChatInput"] textarea:focus {
+        border-color: #38bdf8 !important;
+        box-shadow: 0 0 10px rgba(56, 189, 248, 0.35) !important;
     }
 
     section[data-testid="stSidebar"] .stChatMessage {
@@ -718,6 +807,37 @@ def get_candles_with_live_overlay(market: str, ticker: str, timeframe: str, limi
     """Combine closed historical bars from Snowflake with the live forming bar from the WebSocket worker."""
     df = load_candles_from_snowflake(market=market, ticker=ticker, timeframe=timeframe, limit=limit)
 
+    # Bridge any historical lag with fresh closed bars directly from exchange REST API
+    now_utc = datetime.now(timezone.utc)
+    needs_bridge = False
+    if df.empty:
+        needs_bridge = True
+    else:
+        latest_ts = pd.to_datetime(df["TIMESTAMP_UTC"].iloc[-1])
+        if latest_ts.tzinfo is None:
+            latest_ts = latest_ts.tz_localize(timezone.utc)
+        if (now_utc - latest_ts).total_seconds() > 600:
+            needs_bridge = True
+
+    if needs_bridge and market.upper() == "CRYPTO":
+        try:
+            from src.connectors.crypto_client import fetch_binance_klines
+            recent_candles = fetch_binance_klines(ticker=ticker, timeframe=timeframe, limit=150, is_futures=False)
+            if recent_candles:
+                df_recent = pd.DataFrame(recent_candles)
+                df_recent["TIMESTAMP_UTC"] = pd.to_datetime(df_recent["TIMESTAMP_UTC"])
+                for col in ["OPEN", "HIGH", "LOW", "CLOSE", "VOLUME"]:
+                    df_recent[col] = pd.to_numeric(df_recent[col])
+                if df.empty:
+                    df = df_recent
+                else:
+                    df = pd.concat([df, df_recent], ignore_index=True)
+                    df = df.drop_duplicates(subset=["TIMESTAMP_UTC"], keep="last").sort_values("TIMESTAMP_UTC").reset_index(drop=True)
+                    if len(df) > limit:
+                        df = df.iloc[-limit:].reset_index(drop=True)
+        except Exception as e:
+            logger.warning(f"Error bridging recent candles: {e}")
+
     live_candle = get_live_ws_candle(ticker)
     if live_candle and live_candle.get("timestamp_utc"):
         live_ts = pd.to_datetime(live_candle["timestamp_utc"])
@@ -1021,6 +1141,10 @@ def render_tradingview_chart_html(
                 </div>
                 <div class="hud-card">
                     <span class="hud-badge">{ticker} • {timeframe}</span>
+                    <span id="live-stream-badge" style="display: inline-flex; align-items: center; gap: 4px; font-size: 10px; color: #10b981; font-weight: 700; background: rgba(16, 185, 129, 0.1); padding: 2px 7px; border-radius: 4px; border: 1px solid rgba(16, 185, 129, 0.25);">
+                        <span id="live-stream-dot" style="width: 7px; height: 7px; border-radius: 50%; background: #64748b; display: inline-block; transition: all 0.3s ease;"></span>
+                        LIVE STREAM
+                    </span>
                     <span id="ohlc-metrics">Cargando...</span>
                 </div>
             </div>
@@ -1109,6 +1233,7 @@ def render_tradingview_chart_html(
                 borderVisible: false,
                 wickUpColor: '#10b981',
                 wickDownColor: '#ef4444',
+                lastPriceAnimation: 1,
                 priceFormat: {{
                     type: 'price',
                     precision: {precision},
@@ -1276,6 +1401,122 @@ def render_tradingview_chart_html(
                     chart.applyOptions({{ width: rect.width, height: rect.height }});
                 }}
             }}).observe(container);
+
+            // 7. Sub-Second Real-Time Candlestick Streaming with Liquid-Smooth Easing
+            (function initLiveCandleStream() {{
+                const rawTicker = "{ticker}".toUpperCase().replace('/', '').replace('-', '').trim();
+                const wsUrl = 'ws://' + (window.location.hostname || 'localhost') + ':8765/ws/candles/' + rawTicker;
+                let ws = null;
+                let retryTimer = null;
+
+                // State variables for continuous smooth interpolation
+                let currentBar = null;
+                let targetBar = null;
+                let animFrameId = null;
+
+                // Seed currentBar from historical series if available
+                if (candles && candles.length > 0) {{
+                    const last = candles[candles.length - 1];
+                    currentBar = {{
+                        time: last.time,
+                        open: Number(last.open),
+                        high: Number(last.high),
+                        low: Number(last.low),
+                        close: Number(last.close),
+                        volume: Number(last.volume || 0)
+                    }};
+                }}
+
+                function setDotStatus(connected) {{
+                    const dot = document.getElementById('live-stream-dot');
+                    if (dot) {{
+                        dot.style.background = connected ? '#10b981' : '#64748b';
+                        dot.style.boxShadow = connected ? '0 0 10px rgba(16, 185, 129, 0.7)' : 'none';
+                    }}
+                }}
+
+                // 60 FPS Organic Fluid Lerp Loop
+                function smoothAnimationLoop() {{
+                    if (targetBar) {{
+                        if (!currentBar || currentBar.time !== targetBar.time) {{
+                            // New candle period started
+                            currentBar = Object.assign({{}}, targetBar);
+                            candleSeries.update(currentBar);
+                            if (typeof renderHUD === 'function') renderHUD(currentBar);
+                        }} else {{
+                            // Same candle period: smoothly glide close, high, and low towards target
+                            const deltaClose = targetBar.close - currentBar.close;
+                            
+                            // Easing factor: 0.16 per frame produces a buttery smooth ~180ms glide
+                            if (Math.abs(deltaClose) > 0.0001) {{
+                                currentBar.close += deltaClose * 0.16;
+                                
+                                // Organically expand high / low as price moves
+                                if (currentBar.close > currentBar.high) currentBar.high = currentBar.close;
+                                if (currentBar.close < currentBar.low) currentBar.low = currentBar.close;
+                                
+                                candleSeries.update({{
+                                    time: currentBar.time,
+                                    open: currentBar.open,
+                                    high: currentBar.high,
+                                    low: currentBar.low,
+                                    close: currentBar.close
+                                }});
+                                
+                                if (typeof renderHUD === 'function') {{
+                                    renderHUD(currentBar);
+                                }}
+                            }}
+                        }}
+                    }}
+                    animFrameId = requestAnimationFrame(smoothAnimationLoop);
+                }}
+                animFrameId = requestAnimationFrame(smoothAnimationLoop);
+
+                function connect() {{
+                    try {{
+                        ws = new WebSocket(wsUrl);
+                        ws.onopen = function() {{
+                            setDotStatus(true);
+                            console.log('[Kafka-WS] Subscribed to real-time tick stream for', rawTicker);
+                        }};
+                        ws.onmessage = function(event) {{
+                            try {{
+                                const tick = JSON.parse(event.data);
+                                if (tick && tick.time) {{
+                                    targetBar = {{
+                                        time: tick.time,
+                                        open: parseFloat(tick.open),
+                                        high: parseFloat(tick.high),
+                                        low: parseFloat(tick.low),
+                                        close: parseFloat(tick.close),
+                                        volume: parseFloat(tick.volume || 0)
+                                    }};
+                                    // If first bar received, sync immediately
+                                    if (!currentBar) {{
+                                        currentBar = Object.assign({{}}, targetBar);
+                                        candleSeries.update(currentBar);
+                                        if (typeof renderHUD === 'function') renderHUD(currentBar);
+                                    }}
+                                }}
+                            }} catch (e) {{
+                                console.debug('[Kafka-WS] Error parsing tick', e);
+                            }}
+                        }};
+                        ws.onclose = function() {{
+                            setDotStatus(false);
+                            retryTimer = setTimeout(connect, 2500);
+                        }};
+                        ws.onerror = function() {{
+                            if (ws) ws.close();
+                        }};
+                    }} catch (err) {{
+                        setDotStatus(false);
+                        retryTimer = setTimeout(connect, 2500);
+                    }}
+                }}
+                connect();
+            }})();
         </script>
     </body>
     </html>
@@ -1372,7 +1613,7 @@ def main():
                 st.rerun()
 
         trigger_prompt = None
-        chat_box = st.container(height=570)
+        chat_box = st.container(height=380)
         with chat_box:
             if not st.session_state["chat_messages"]:
                 st.markdown(

@@ -1,4 +1,3 @@
-
 # | Institutional Multi-Market Terminal & Multi-Agent Committee
 
 > **Plataforma Cuantitativa y Agéntica de Grado Institucional (Hedge Funds)** integrada nativamente con **Snowflake AI Data Cloud**, arquitectura Medallion (**Bronze, Silver, Gold**), cálculo de microestructura de mercado en tiempo real (**Velas de 5m/1h, VWAP Bands, Volume Profile POC/VAH/VAL, Hurst, CVD**) y orquestación multi-agente con filtro determinista del **Chief Risk Officer (CRO)**.
@@ -117,10 +116,10 @@ Snowflake actúa como el **almacén central unificado de datos, cómputo y vecto
 
 ### 2. Capas Medallion Implementadas
 
-| Capa             | Esquema            | Tablas Principales                                                       | Rol Técnico en el Proyecto                                                                                                                                                                                                                    |
-| :--------------- | :----------------- | :----------------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Capa             | Esquema            | Tablas Principales                                                     | Rol Técnico en el Proyecto                                                                                                                                                                                                                    |
+| :--------------- | :----------------- | :--------------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Bronze** | `BRONZE_RAW`     | `RAW_MARKET_FEEDRAW_ORDERBOOK_FEED``RAW_MACRO_FEEDRAW_NEWS_FEED`     | Ingesta cruda append-only en columnas nativas `VARIANT` (JSON auditables). Preserva la trazabilidad completa desde la fuente sin esquemas rígidos.                                                                                          |
-| **Silver** | `SILVER_CLEAN`   | `MARKET_CANDLES`                                                       | Series temporales limpias, validadas y normalizadas (Open, High, Low, Close, Volume). Posee clave primaria compuesta `(MARKET, TICKER, TIMEFRAME, TIMESTAMP_UTC)` y directiva `CLUSTER BY` para acelerar lecturas por intervalo de tiempo. |
+| **Silver** | `SILVER_CLEAN`   | `MARKET_CANDLES`                                                     | Series temporales limpias, validadas y normalizadas (Open, High, Low, Close, Volume). Posee clave primaria compuesta `(MARKET, TICKER, TIMEFRAME, TIMESTAMP_UTC)` y directiva `CLUSTER BY` para acelerar lecturas por intervalo de tiempo. |
 | **Gold**   | `GOLD_QUANT_RAG` | `QUANT_MARKET_STATESINSTITUTIONAL_PLAYBOOKS``EPISODIC_MEMORY_STATES` | **Feature Store Cuantitativo y Base de Vectores.** Contiene métricas de microestructura calculadas por vela, así como vectores de 1024 dimensiones generados nativamente para el RAG.                                                  |
 
 ---
@@ -177,6 +176,7 @@ A diferencia de los LLMs tradicionales que carecen de noción de mercado pasado,
 
 * **Vectorización:** Convierte el resumen textual del estado (`"BTCUSDT en MEAN_REVERSION con Hurst=0.41 y precio en banda inferior VWAP"`) en un vector de 1024 dimensiones.
 * **Recuperación por Similitud:** Cuando el agente analiza el mercado hoy, ejecuta:
+
   ```sql
   SELECT TICKER, REGIME, OUTCOME_LABEL,
          VECTOR_COSINE_SIMILARITY(STATE_VECTOR, SNOWFLAKE.CORTEX.EMBED_TEXT_1024('voyage-multilingual-2', :current_state)) AS SIMILARITY_SCORE
@@ -400,6 +400,26 @@ Para sincronizar automáticamente cada 60 segundos una ventana deslizante de 7 d
 ```bash
 python -m src.pipeline.live_daemon --interval 60 --days 7 --timeframe 5m
 ```
+
+### 8. Streaming de Velas en Tiempo Real con Kafka & WebSocket (Sub-segundo)
+
+Para ver las velas subir y bajar en tiempo real a 60 FPS directamente en el gráfico de TradingView:
+
+1. **(Opcional) Levantar Clúster Kafka / Redpanda**:
+   ```bash
+   docker compose -f docker-compose.kafka.yml up -d
+   ```
+   *Acceso a Consola Web Redpanda:* `http://localhost:8080`
+
+2. **Lanzar el Gateway de Streaming WebSocket**:
+   ```bash
+   # En Windows PowerShell:
+   .\start_stream_gateway.ps1
+   # O en terminal Python:
+   python -m src.pipeline.ws_gateway
+   ```
+
+3. El frontend de TradingView se conectará automáticamente al puerto `8765`, encendiendo la insignia verde `LIVE STREAM` y actualizando en tiempo real la vela actual con cada trade del mercado.
 
 ---
 
